@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+
+set -u
+set -o pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=lib/download.sh
+source "$SCRIPT_DIR/lib/download.sh"
+# shellcheck source=browsers/firefox.sh
+source "$SCRIPT_DIR/browsers/firefox.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage:
+  chatgpt-export-recover --output FILE [--browser auto|firefox] [URL source]
+
+URL sources (choose at most one):
+  --url URL          Explicit signed export URL. This may be visible in shell
+                     history and process listings; the hidden prompt is safer.
+  --url-file FILE    Read the URL from the first line of a mode-restricted file.
+  CHATGPT_EXPORT_URL Read the URL from the environment.
+
+If no URL source is supplied and stdin is a terminal, the program prompts for
+the URL without echoing it.
+
+Options:
+  --output FILE            Final ZIP path (required).
+  --browser NAME           auto (default) or firefox.
+  --chunk-size BYTES       Base segment size (default: 134217728 / 128 MiB).
+  --min-chunk-size BYTES   Retry floor (default: 16777216 / 16 MiB).
+  -h, --help               Show this help.
+
+The signed URL and cookie values are never printed by this program.
+USAGE
+}
+
+die() {
+    printf 'FAIL: %s\n' "$*" >&2
+    exit 2
+}
+
+url_argument=""
+url_file=""
+output_file=""
+browser="auto"
+chunk_size=134217728
+minimum_chunk_size=16777216
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --url)
+            [ "$#" -ge 2 ] || die "--url requires a value"
+            [ -z "$url_file" ] || die "--url conflicts with --url-file"
+            url_argument="$2"
+            shift 2
+            ;;
+        --url-file)
+            [ "$#" -ge 2 ] || die "--url-file requires a value"
+            [ -z "$url_argument" ] || die "--url-file conflicts with --url"
+            url_file="$2"
+            shift 2
+            ;;
+        --output)
+            [ "$#" -ge 2 ] || die "--output requires a value"
+            output_file="$2"
+            shift 2
+            ;;
+        --browser)
+            [ "$#" -ge 2 ] || die "--browser requires a value"
+            browser="$2"
+            shift 2
+            ;;
+        --chunk-size)
+            [ "$#" -ge 2 ] || die "--chunk-size requires a value"
+            chunk_size="$2"
+            shift 2
+            ;;
+        --min-chunk-size)
+            [ "$#" -ge 2 ] || die "--min-chunk-size requires a value"
+            minimum_chunk_size="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+[ -n "$output_file" ] || die "--output is required"
+
+if [ -n "$url_argument" ]; then
+    export_url="$url_argument"
+elif [ -n "$url_file" ]; then
+    [ -f "$url_file" ] || die "URL file does not exist"
+    IFS= read -r export_url < "$url_file" || die "could not read URL file"
+elif [ -n "${CHATGPT_EXPORT_URL:-}" ]; then
+    export_url="$CHATGPT_EXPORT_URL"
+else
+    if [ ! -t 0 ]; then
+        die "no URL was supplied and no interactive terminal is available"
+    fi
+    IFS= read -r -s -p 'Signed ChatGPT export URL: ' export_url
+    printf '\n'
+fi
+
+unset CHATGPT_EXPORT_URL url_argument
+
+[ -n "$export_url" ] || die "signed export URL is empty"
+case "$export_url" in
+    https://*) ;;
+    *) die "signed export URL must use HTTPS" ;;
+esac
+
+url_authority="${export_url#https://}"
+url_authority="${url_authority%%/*}"
+url_authority="${url_authority%%\?*}"
+url_authority="${url_authority%%\#*}"
+case "$url_authority" in
+    *@*) die "signed export URL must not contain userinfo" ;;
+esac
+url_host="${url_authority%%:*}"
+url_host="${url_host,,}"
+case "$url_host" in
+    chatgpt.com|*.chatgpt.com|openai.com|*.openai.com) ;;
+    *) die "signed export URL host is not a ChatGPT/OpenAI host" ;;
+esac
+
+case "$browser" in
+    auto)
+        if firefox_detect_browser; then
+            browser="firefox"
+        else
+            die "no supported browser profile was detected"
+        fi
+        ;;
+    firefox) ;;
+    *) die "browser provider is not implemented: $browser" ;;
+esac
+
+for required_command in curl python3 stat sha256sum; do
+    command -v "$required_command" >/dev/null 2>&1 || die "$required_command is required"
+done
+
+runtime_base="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+[ -d "$runtime_base" ] && [ -w "$runtime_base" ] || runtime_base="/tmp"
+work_dir="$(mktemp -d "$runtime_base/chatgpt-export-recovery.XXXXXX")" || die "cannot create runtime directory"
+chmod 700 "$work_dir"
+
+cleanup() {
+    firefox_cleanup_session_material "$work_dir" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
+
+cookie_jar="$work_dir/cookies.txt"
+cookie_meta="$work_dir/cookie-meta"
+umask 077
+
+printf 'ChatGPT Export Recovery\n'
+printf '  browser=%s\n' "$browser"
+printf '  output=%s\n' "$output_file"
+printf 'Discovering a live Firefox session without printing cookie values...\n'
+
+if ! firefox_build_temporary_cookie_jar "$cookie_jar" "$cookie_meta" "$work_dir"; then
+    die "Firefox session discovery failed"
+fi
+
+profile=""
+source_kind=""
+snapshot_method=""
+cookie_count=""
+chatgpt_cookie_count=""
+partitioned=""
+while IFS='=' read -r key value; do
+    case "$key" in
+        profile) profile="$value" ;;
+        source) source_kind="$value" ;;
+        snapshot_method) snapshot_method="$value" ;;
+        cookies) cookie_count="$value" ;;
+        chatgpt_cookies) chatgpt_cookie_count="$value" ;;
+        origin_partitioned) partitioned="$value" ;;
+    esac
+done < "$cookie_meta"
+
+printf '  selected_profile=%s\n' "$profile"
+printf '  discovery=%s snapshot=%s\n' "$source_kind" "$snapshot_method"
+printf '  selected_cookies=%s chatgpt_cookies=%s partitioned=%s\n' \
+    "$cookie_count" "$chatgpt_cookie_count" "$partitioned"
+printf '  cookie_values=WITHHELD; temporary_material=mode-0600\n'
+
+user_agent="$(firefox_user_agent)"
+download_recover \
+    "$export_url" \
+    "$output_file" \
+    "$cookie_jar" \
+    "$user_agent" \
+    "$work_dir" \
+    "$chunk_size" \
+    "$minimum_chunk_size"
+exit $?

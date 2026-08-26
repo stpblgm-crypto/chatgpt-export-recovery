@@ -1,0 +1,25 @@
+# Export payloads and checkpoints
+*.zip
+*.part
+*.segment.current
+*.invalid.*
+
+# Browser and session material
+cookies.sqlite*
+cookies.txt
+*.cookiejar
+*.session
+*.headers
+headers
+cookie-meta
+
+# Logs and local configuration
+*.log
+.env
+.env.*
+
+# Tool/runtime residue
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
