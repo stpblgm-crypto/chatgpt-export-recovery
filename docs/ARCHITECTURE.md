@@ -54,3 +54,18 @@ rolled back to the previous checkpoint size.
 logic for auditability. The only deliberate content transformation is replacing
 the original credential-like signed URL with
 `__CHATGPT_EXPORT_SIGNED_URL__`. It is not the recommended entrypoint.
+
+## Experimental Chromium adapter
+
+The Firefox provider is unchanged. `browsers/select.sh` dispatches explicit or
+automatic selection; `browsers/chromium.sh` invokes the Python adapter. That
+adapter selects one bounded or explicit profile and filters valid exact-domain
+cookies inside a read transaction. Plaintext is the default. With explicit
+opt-in, the pinned upstream dependency receives only a private filtered
+snapshot, including its schema version, and returns cookie values in memory.
+Partitions and unknown encryption schemes are rejected. No CDP or custom
+cryptography is implemented. See [the guide](CHROMIUM_EXPERIMENTAL.md).
+
+The engine now supports a caller-approved in-place checkpoint guarded by its
+expected size and SHA256, enforces exact response end bounds, ignores redirect
+range headers, rejects duplicate range headers, and caps curl body size/time.

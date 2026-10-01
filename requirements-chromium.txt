@@ -1,0 +1,5 @@
+# Optional Linux Chromium adapter. Install only in an isolated, authorized venv.
+browser-cookie3==0.20.1
+jeepney==0.9.0
+lz4==4.4.5
+pycryptodomex==3.23.0

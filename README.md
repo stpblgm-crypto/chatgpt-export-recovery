@@ -6,7 +6,8 @@ archives on Linux.
 > Unofficial utility. Not affiliated with or endorsed by OpenAI.
 
 Large browser downloads can stop before the complete archive reaches disk. This
-tool reuses an authenticated local Firefox session, downloads bounded HTTP Range
+tool reuses an authenticated local Firefox session (or an explicitly selected
+experimental Chromium provider), downloads bounded HTTP Range
 segments, validates every response before append, and resumes from the exact
 size of the durable `.part` checkpoint.
 
@@ -38,7 +39,7 @@ from a mode-0600 temporary config so it is not placed in curl's argument list.
 ## Prerequisites
 
 - Linux and Bash 4 or newer
-- `curl`, Python 3 with `sqlite3`, `stat`, `sync`, and `sha256sum`
+- `curl` 8.4.0 or newer, Python 3 with `sqlite3`, `stat`, `sync`, and `sha256sum`
 - `unzip`, or Python's standard `zipfile` module as fallback
 - a local Firefox profile signed in to the same ChatGPT account as the export
 - enough free space for the remaining bytes plus a 1 GiB safety margin
@@ -54,7 +55,7 @@ changes the durable checkpoint:
 
 1. HTTP status is exactly `206`.
 2. `Content-Range` is present and starts at `stat(PART).size`.
-3. The response does not exceed the requested range.
+3. The response ends exactly at the requested end or the object's final byte.
 4. The body length exactly matches the declared range length.
 5. The remote total remains unchanged for the whole run.
 
@@ -76,6 +77,12 @@ start. A valid final ZIP exits immediately. An invalid final file becomes the
 checkpoint only when no checkpoint already exists; otherwise it is preserved
 under a no-overwrite timestamped name.
 
+For an existing incomplete ZIP that must retain its filename, the new
+`--checkpoint-file FILE` option supports in-place recovery with mandatory
+`--expected-size` and `--expected-sha256` guards. See the
+[experimental Chromium guide](docs/CHROMIUM_EXPERIMENTAL.md) for the complete
+permission boundary, options, and recovery procedure.
+
 ## Support matrix
 
 | Capability | State |
@@ -87,8 +94,8 @@ under a no-overwrite timestamped name.
 | 128 MiB segmented recovery | VERIFIED |
 | Final ZIP integrity test | VERIFIED |
 | Firefox Flatpak | NOT YET VERIFIED |
-| Chrome | NOT IMPLEMENTED |
-| Chromium | NOT IMPLEMENTED |
+| Chrome | EXPERIMENTAL / NOT LIVE VERIFIED |
+| Chromium | EXPERIMENTAL / NOT LIVE VERIFIED |
 | Brave | NOT IMPLEMENTED |
 | Edge | NOT IMPLEMENTED |
 
@@ -107,6 +114,10 @@ No ChatGPT account or network access is required:
 The suite checks every shell file with `bash -n`, exercises accepted and
 rejected Range responses, verifies a resumed append, and uses a synthetic
 Firefox cookie database to prove that diagnostics do not expose cookie values.
+It also covers explicit/automatic Chromium selection, synthetic cookie schemas,
+secret-safe failure, optional pinned-library v10/version-24 handling, exact
+in-place resume, wrong size/hash guards, invalid final ZIP retention, bounded
+adaptive retries, and stable-total enforcement. No live browser is accessed.
 
 ## Troubleshooting
 
@@ -125,7 +136,8 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 ## Repository layout
 
 - `src/chatgpt-export-recover` — current CLI
-- `src/browsers/firefox.sh` — Firefox session provider
+- `src/browsers/firefox.sh` — preserved Firefox session provider
+- `src/browsers/chromium.sh` and `chromium_cookies.py` — experimental provider
 - `src/lib/download.sh` — browser-independent Range/checkpoint engine
 - `legacy/` — sanitized archival baseline; not the primary interface
 - `docs/` — architecture, security, verified-run provenance, and roadmap
@@ -134,9 +146,11 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 ## Limitations and roadmap
 
 This release is Linux-only and has no GUI, extension, login automation,
-telemetry, scheduled export, or external SaaS dependency. Chromium-family
-support requires an OS-keyring-aware provider; browser encryption will not be
-bypassed. See [the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
+telemetry, scheduled export, or external SaaS dependency. Chromium support is EXPERIMENTAL / NOT LIVE VERIFIED. The default plaintext
+backend fails on encrypted cookies; an explicitly selected, pinned
+`browser-cookie3` adapter supports authorized local OS facilities without
+custom cryptography or CDP. See [the guide](docs/CHROMIUM_EXPERIMENTAL.md) and
+[the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
 
 ## License
 

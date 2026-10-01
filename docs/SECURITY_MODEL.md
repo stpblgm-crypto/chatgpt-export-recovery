@@ -52,3 +52,16 @@ open files; this tool does not defend against a compromised local account.
 cookie jars, headers, sessions, logs, and environment files. Before publication,
 the staged tree must be searched for signed-URL shapes and known source-only
 markers, then checked with an installed secret scanner when available.
+
+## Experimental Chromium boundary
+
+Chromium session reads require authorized runtime access to the selected
+profile. Only exact ChatGPT/OpenAI domains enter the filtered private snapshot.
+Cookie partitions, unsupported encryption, missing keys and ambiguous profiles
+fail closed. The optional pinned library may use the local OS keyring only
+when explicitly selected; plaintext mode does not. Neither mode accesses CDP,
+process descriptors, hidden browser state, or another environment's session.
+Dependency diagnostics are suppressed; the jar remains mode 0600. Library
+cryptography is not reimplemented here. Cleanup is best effort on normal exit
+and handled signals; SIGKILL or a host crash may require removing the private
+runtime directory manually. See the experimental guide for full limitations.

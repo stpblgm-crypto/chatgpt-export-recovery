@@ -8,11 +8,13 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$SCRIPT_DIR/lib/download.sh"
 # shellcheck source=browsers/firefox.sh
 source "$SCRIPT_DIR/browsers/firefox.sh"
+source "$SCRIPT_DIR/browsers/chromium.sh"
+source "$SCRIPT_DIR/browsers/select.sh"
 
 usage() {
     cat <<'USAGE'
 Usage:
-  chatgpt-export-recover --output FILE [--browser auto|firefox] [URL source]
+  chatgpt-export-recover --output FILE [--browser auto|firefox|chromium] [URL source]
 
 URL sources (choose at most one):
   --url URL          Explicit signed export URL. This may be visible in shell
@@ -25,7 +27,13 @@ the URL without echoing it.
 
 Options:
   --output FILE            Final ZIP path (required).
-  --browser NAME           auto (default) or firefox.
+  --browser NAME           auto (default), firefox, or chromium (EXPERIMENTAL).
+  --profile DIR           Explicit Chromium profile (Default or Profile N).
+  --cookie-backend NAME   plaintext (default) or browser-cookie3 (opt-in).
+  --chromium-product NAME chromium (default) or chrome keyring identity.
+  --checkpoint-file FILE Existing checkpoint, including the output itself.
+  --expected-size BYTES  Required with --checkpoint-file; checked before export I/O.
+  --expected-sha256 HEX  Required with --checkpoint-file; checked before export I/O.
   --chunk-size BYTES       Base segment size (default: 134217728 / 128 MiB).
   --min-chunk-size BYTES   Retry floor (default: 16777216 / 16 MiB).
   -h, --help               Show this help.
@@ -45,6 +53,9 @@ output_file=""
 browser="auto"
 chunk_size=134217728
 minimum_chunk_size=16777216
+checkpoint_file=""
+expected_size=""
+expected_sha256=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -70,6 +81,19 @@ while [ "$#" -gt 0 ]; do
             browser="$2"
             shift 2
             ;;
+        --profile|--cookie-backend|--chromium-product|--checkpoint-file|--expected-size|--expected-sha256)
+            option="$1"
+            [ "$#" -ge 2 ] || die "option requires a value"
+            case "$option" in
+                --profile) export CHATGPT_RECOVERY_CHROMIUM_PROFILE="$2" ;;
+                --cookie-backend) export CHATGPT_RECOVERY_CHROMIUM_BACKEND="$2" ;;
+                --chromium-product) export CHATGPT_RECOVERY_CHROMIUM_PRODUCT="$2" ;;
+                --checkpoint-file) checkpoint_file="$2" ;;
+                --expected-size) expected_size="$2" ;;
+                --expected-sha256) expected_sha256="$2" ;;
+            esac
+            shift 2
+            ;;
         --chunk-size)
             [ "$#" -ge 2 ] || die "--chunk-size requires a value"
             chunk_size="$2"
@@ -85,12 +109,17 @@ while [ "$#" -gt 0 ]; do
             exit 0
             ;;
         *)
-            die "unknown argument: $1"
+            die "unknown argument (value withheld)"
             ;;
     esac
 done
 
 [ -n "$output_file" ] || die "--output is required"
+if [ -n "$checkpoint_file" ]; then
+    [ -n "$expected_size" ] && [ -n "$expected_sha256" ] || die "explicit checkpoint requires expected size and SHA256"
+elif [ -n "$expected_size" ] || [ -n "$expected_sha256" ]; then
+    die "expected size/SHA256 require --checkpoint-file"
+fi
 
 if [ -n "$url_argument" ]; then
     export_url="$url_argument"
@@ -129,21 +158,12 @@ case "$url_host" in
     *) die "signed export URL host is not a ChatGPT/OpenAI host" ;;
 esac
 
-case "$browser" in
-    auto)
-        if firefox_detect_browser; then
-            browser="firefox"
-        else
-            die "no supported browser profile was detected"
-        fi
-        ;;
-    firefox) ;;
-    *) die "browser provider is not implemented: $browser" ;;
-esac
-
-for required_command in curl python3 stat sha256sum; do
+for required_command in curl python3 stat sha256sum sync; do
     command -v "$required_command" >/dev/null 2>&1 || die "$required_command is required"
 done
+
+select_browser_provider "$browser" || die "browser selection failed"
+browser="$SELECTED_BROWSER"
 
 runtime_base="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 [ -d "$runtime_base" ] && [ -w "$runtime_base" ] || runtime_base="/tmp"
@@ -151,7 +171,7 @@ work_dir="$(mktemp -d "$runtime_base/chatgpt-export-recovery.XXXXXX")" || die "c
 chmod 700 "$work_dir"
 
 cleanup() {
-    firefox_cleanup_session_material "$work_dir" >/dev/null 2>&1 || true
+    "${browser}_cleanup_session_material" "$work_dir" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -165,10 +185,13 @@ umask 077
 printf 'ChatGPT Export Recovery\n'
 printf '  browser=%s\n' "$browser"
 printf '  output=%s\n' "$output_file"
-printf 'Discovering a live Firefox session without printing cookie values...\n'
+printf 'Preparing the selected browser session without printing cookie values...\n'
+if [ "$browser" = chromium ]; then
+    printf '  Chromium: EXPERIMENTAL / NOT LIVE VERIFIED; only use authorized runtime session access.\n'
+fi
 
-if ! firefox_build_temporary_cookie_jar "$cookie_jar" "$cookie_meta" "$work_dir"; then
-    die "Firefox session discovery failed"
+if ! "${browser}_build_temporary_cookie_jar" "$cookie_jar" "$cookie_meta" "$work_dir"; then
+    die "selected browser session discovery failed"
 fi
 
 profile=""
@@ -194,7 +217,7 @@ printf '  selected_cookies=%s chatgpt_cookies=%s partitioned=%s\n' \
     "$cookie_count" "$chatgpt_cookie_count" "$partitioned"
 printf '  cookie_values=WITHHELD; temporary_material=mode-0600\n'
 
-user_agent="$(firefox_user_agent)"
+user_agent="$("${browser}_user_agent")" || die "could not obtain a safe user agent"
 download_recover \
     "$export_url" \
     "$output_file" \
@@ -202,5 +225,8 @@ download_recover \
     "$user_agent" \
     "$work_dir" \
     "$chunk_size" \
-    "$minimum_chunk_size"
+    "$minimum_chunk_size" \
+    "$checkpoint_file" \
+    "$expected_size" \
+    "$expected_sha256"
 exit $?

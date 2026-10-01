@@ -13,3 +13,13 @@ All notable changes to this project are documented here.
   verification, and final SHA256 output.
 - Add offline tests for shell syntax, Range validation, resume append behavior,
   cookie filtering, and secret-free diagnostics.
+
+## Unreleased: experimental Chromium recovery
+
+- Add explicit Chromium/Chrome session provider and deterministic auto selection.
+- Add plaintext-only default and opt-in browser-cookie3 0.20.1 Linux adapter.
+- Add expected-size/SHA256 guarded in-place checkpoint support.
+- Tighten range-end and header validation; cap response bytes and request time.
+- Extend offline synthetic/provider/resume/secret-output coverage.
+- Preserve Firefox source and historical live verification; Chromium is
+  EXPERIMENTAL / NOT LIVE VERIFIED.

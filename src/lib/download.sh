@@ -20,6 +20,35 @@ range_reject() {
     return 1
 }
 
+# Bound external integers before Bash arithmetic (including leading-zero/octal cases).
+range_integer() {
+    [[ "${1-}" =~ ^(0|[1-9][0-9]{0,17})$ ]]
+}
+
+require_bounded_curl() {
+    local version major minor
+    version="$(curl --disable --version 2>/dev/null | head -n1)"
+    if [[ "$version" =~ ^curl[[:space:]]+([0-9]+)\.([0-9]+)\. ]]; then
+        major="${BASH_REMATCH[1]}"; minor="${BASH_REMATCH[2]}"
+        if [ "$major" -gt 8 ] || { [ "$major" -eq 8 ] && [ "$minor" -ge 4 ]; }; then
+            return 0
+        fi
+    fi
+    printf 'FAIL: curl 8.4.0 or newer is required to bound bodies without Content-Length.\n' >&2
+    return 2
+}
+
+read_range_headers() {
+    local headers="${1-}"
+    # Reset at every response block so redirects cannot supply the final range.
+    HTTP_STATUS="$(awk '/^HTTP\// {code=$2} END {gsub("\\r", "", code); if (code ~ /^[0-9][0-9][0-9]$/) print code; else print "INVALID"}' "$headers")"
+    HTTP_CONTENT_RANGE="$(awk '
+        /^HTTP\// {value=""; count=0}
+        tolower($0) ~ /^content-range:/ {sub(/^[^:]*:[[:space:]]*/, ""); gsub("\\r", ""); value=$0; count++}
+        END {if (count == 1) print value; else print "INVALID"}
+    ' "$headers")"
+}
+
 validate_range_response() {
     local status="${1-}"
     local content_range="${2-}"
@@ -41,8 +70,8 @@ validate_range_response() {
         return 1
     fi
 
-    if [[ ! "$expected_start" =~ ^[0-9]+$ ]] ||
-       [[ ! "$requested_end" =~ ^[0-9]+$ ]] ||
+    if ! range_integer "$expected_start" ||
+       ! range_integer "$requested_end" ||
        [ "$requested_end" -lt "$expected_start" ]; then
         range_reject request "invalid requested range"
         return 1
@@ -54,6 +83,11 @@ validate_range_response() {
         remote_total="${BASH_REMATCH[3]}"
     else
         range_reject content-range "Content-Range is missing or malformed"
+        return 1
+    fi
+
+    if ! range_integer "$remote_start" || ! range_integer "$remote_end" || ! range_integer "$remote_total"; then
+        range_reject content-range "Content-Range contains unsafe integer values"
         return 1
     fi
 
@@ -74,10 +108,18 @@ validate_range_response() {
         return 1
     fi
     if [ -n "$known_total" ]; then
-        if [[ ! "$known_total" =~ ^[0-9]+$ ]] || [ "$remote_total" -ne "$known_total" ]; then
+        if ! range_integer "$known_total" || [ "$remote_total" -ne "$known_total" ]; then
             range_reject remote-total "remote total changed"
             return 1
         fi
+    fi
+    expected="$requested_end"
+    if [ "$expected" -ge "$remote_total" ]; then
+        expected=$((remote_total - 1))
+    fi
+    if [ "$remote_end" -ne "$expected" ]; then
+        range_reject range-end "range does not reach the requested end or end of object"
+        return 1
     fi
     if [ ! -f "$body_file" ]; then
         range_reject body-missing "segment body is missing"
@@ -151,7 +193,16 @@ verify_zip_file() {
     if command -v unzip >/dev/null 2>&1; then
         unzip -tq "$archive" >/dev/null 2>&1
     else
-        python3 -m zipfile -t "$archive" >/dev/null 2>&1
+        python3 - "$archive" >/dev/null 2>&1 <<'PYZIP'
+import sys
+import zipfile
+try:
+    with zipfile.ZipFile(sys.argv[1]) as archive:
+        valid = archive.testzip() is None
+except Exception:
+    valid = False
+raise SystemExit(0 if valid else 1)
+PYZIP
     fi
 }
 
@@ -163,14 +214,17 @@ download_recover() {
     local work_dir="${5-}"
     local chunk_bytes="${6:-134217728}"
     local min_chunk_bytes="${7:-16777216}"
-    local part="${final}.part"
+    local checkpoint_override="${8-}"
+    local expected_size="${9-}"
+    local expected_sha256="${10-}"
+    local part="${checkpoint_override:-${final}.part}"
     local segment="$work_dir/download.segment.current"
     local headers="$work_dir/headers"
     local curl_error="$work_dir/curl.error"
     local url_config="$work_dir/curl-url.conf"
     local output_dir start pos total segment_no current_chunk attempt
     local requested_end rc status content_range next free need margin
-    local stamp saved expected_after validation_reason
+    local stamp saved expected_after validation_reason actual_hash
 
     if [ -z "$url" ] || [ -z "$final" ] || [ ! -f "$cookie_jar" ] || [ ! -d "$work_dir" ]; then
         printf 'FAIL: download engine received incomplete inputs\n' >&2
@@ -186,13 +240,15 @@ download_recover() {
             return 2
             ;;
     esac
-    if [[ ! "$chunk_bytes" =~ ^[0-9]+$ ]] ||
-       [[ ! "$min_chunk_bytes" =~ ^[0-9]+$ ]] ||
+    if ! range_integer "$chunk_bytes" ||
+       ! range_integer "$min_chunk_bytes" ||
        [ "$chunk_bytes" -lt "$min_chunk_bytes" ] ||
        [ "$min_chunk_bytes" -le 0 ]; then
         printf 'FAIL: invalid chunk-size configuration\n' >&2
         return 2
     fi
+
+    require_bounded_curl || return 2
 
     output_dir="$(dirname -- "$final")"
     if [ ! -d "$output_dir" ]; then
@@ -208,6 +264,32 @@ download_recover() {
         return 2
     fi
 
+    if [ -n "$checkpoint_override" ]; then
+        if [ ! -f "$part" ] || ! range_integer "$expected_size" ||
+           [[ ! "$expected_sha256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            printf 'FAIL: explicit checkpoint requires an existing file and expected size/SHA256.\n' >&2
+            return 2
+        fi
+        if [ "$(stat -c '%s' "$part" 2>/dev/null)" != "$expected_size" ]; then
+            printf 'FAIL: checkpoint size does not match the approved starting size.\n' >&2
+            return 2
+        fi
+        actual_hash="$(sha256sum -- "$part")" || return 1
+        actual_hash="${actual_hash%% *}"
+        if [ "$actual_hash" != "${expected_sha256,,}" ]; then
+            printf 'FAIL: checkpoint SHA256 does not match the approved starting hash.\n' >&2
+            return 2
+        fi
+        # Normalize lexical paths so --output ./a --checkpoint-file a is in-place.
+        part="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$part")" || return 1
+        final="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$final")" || return 1
+        if [ "$part" != "$final" ] && [ "$part" -ef "$final" ]; then
+            printf 'FAIL: output and explicit checkpoint alias the same file.\n' >&2
+            return 2
+        fi
+        printf 'Starting checkpoint size and SHA256 verified; original filename preserved.\n'
+    fi
+
     umask 077
     printf 'url = "%s"\n' "$url" > "$url_config" || return 1
     chmod 600 "$url_config" || return 1
@@ -221,7 +303,9 @@ download_recover() {
             return 0
         fi
 
-        if [ -f "$part" ]; then
+        if [ "$part" = "$final" ]; then
+            printf 'Using invalid final file as an explicit in-place checkpoint.\n'
+        elif [ -f "$part" ]; then
             stamp="$(date -u +%Y%m%dT%H%M%SZ)"
             saved="${final}.invalid.${stamp}"
             if [ -e "$saved" ]; then
@@ -257,6 +341,9 @@ download_recover() {
         --silent
         --show-error
         --connect-timeout 30
+        --max-time 300
+        --max-redirs 5
+        --globoff
         --speed-time 120
         --speed-limit 1024
         --proto '=https'
@@ -299,18 +386,25 @@ download_recover() {
 
             curl --disable --config "$url_config" "${curl_common[@]}" \
                 --range "${pos}-${requested_end}" \
+                --max-filesize "$((requested_end - pos + 1))" \
                 --dump-header "$headers" \
                 --output "$segment" \
                 2>"$curl_error"
             rc=$?
 
-            status="$(awk '/^HTTP\// {gsub("\\r", "", $2); code=$2} END {print code}' "$headers")"
-            content_range="$(awk 'tolower($0) ~ /^content-range:/ {sub(/^[^:]*:[[:space:]]*/, ""); gsub("\\r", ""); value=$0} END {print value}' "$headers")"
+            read_range_headers "$headers"
+            status="$HTTP_STATUS"
+            content_range="$HTTP_CONTENT_RANGE"
             printf '    curl_rc=%s http=%s\n' "$rc" "${status:-UNKNOWN}"
-            printf '    content_range=%s\n' "${content_range:-MISSING}"
+            # Raw HTTP headers can contain credentials or attacker-controlled text.
+            # Only validated numeric range fields are logged below.
 
             if [ "$rc" -ne 0 ]; then
                 rm -f -- "$segment"
+                if [ "$status" = "200" ]; then
+                    printf 'STOP: HTTP 200 cannot be appended; checkpoint unchanged.\n' >&2
+                    return 24
+                fi
                 if [ "$status" = "401" ] || [ "$status" = "403" ]; then
                     printf 'AUTH/SIGNED-URL FAIL: server returned HTTP %s.\n' "$status" >&2
                     printf 'Resume position: %s\n' "$pos" >&2
@@ -353,14 +447,21 @@ download_recover() {
                 return 24
             fi
 
+            printf '    content_range=bytes %s-%s/%s\n' \
+                "$RANGE_REMOTE_START" "$RANGE_REMOTE_END" "$RANGE_REMOTE_TOTAL"
             if [ -z "$total" ]; then
                 total="$RANGE_REMOTE_TOTAL"
                 printf '    remote_total=%s bytes\n' "$total"
 
-                free="$(df -PB1 "$output_dir" 2>/dev/null | awk 'NR==2 {print $4}')"
+                free="$(df -PB1 "$(dirname -- "$part")" 2>/dev/null | awk 'NR==2 {print $4}')"
                 need=$((total - pos))
                 margin=$((1024 * 1024 * 1024))
-                if [ -n "$free" ] && [ "$free" -lt $((need + margin)) ]; then
+                if ! range_integer "$free"; then
+                    rm -f -- "$segment"
+                    printf 'STOP: cannot verify free checkpoint disk space; checkpoint unchanged.\n' >&2
+                    return 28
+                fi
+                if [ "$free" -lt $((need + margin)) ]; then
                     rm -f -- "$segment"
                     printf 'STOP: insufficient free space. free=%s needed=%s margin=%s\n' \
                         "$free" "$need" "$margin" >&2
@@ -388,7 +489,9 @@ download_recover() {
 
     printf 'Verifying ZIP integrity...\n'
     if verify_zip_file "$part"; then
-        mv -- "$part" "$final" || return 1
+        if [ "$part" != "$final" ]; then
+            mv -- "$part" "$final" || return 1
+        fi
         printf 'PASS: archive is complete and ZIP-valid.\n'
         stat -c 'size=%s bytes' "$final"
         sha256sum "$final"

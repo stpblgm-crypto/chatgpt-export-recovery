@@ -30,3 +30,14 @@ if [ "$size" -ne 8 ]; then
 fi
 
 printf 'PASS: existing checkpoint plus one verified segment advanced to 8 bytes.\n'
+
+# A failed synchronization rolls back the new bytes; only synthetic files used.
+printf 'ABCD' > "$part"
+sync() { return 1; }
+if append_verified_segment "$part" "$segment" 4 8 2>/dev/null; then
+    printf 'FAIL: failed sync was accepted.\n' >&2
+    exit 1
+fi
+[ "$(cat "$part")" = 'ABCD' ]
+unset -f sync
+printf 'PASS: sync failure rolls back to the previous checkpoint size.\n'

@@ -69,3 +69,15 @@ expect_fail \
     validate_range_response 206 'bytes 0-9/100' 0 8 "$TEST_DIR/exact.body" ''
 
 printf 'PASS: %s Range validation cases behaved as expected.\n' "$passes"
+
+expect_fail 'short declared end before object end' validate_range_response 206 'bytes 0-9/100' 0 19 "$TEST_DIR/exact.body" ''
+expect_pass 'last range clamped by object total' validate_range_response 206 'bytes 0-9/10' 0 19 "$TEST_DIR/exact.body" ''
+expect_fail 'unsafe integer overflow' validate_range_response 206 'bytes 0-9/999999999999999999999' 0 9 "$TEST_DIR/exact.body" ''
+expect_fail 'leading zero ambiguity' validate_range_response 206 'bytes 00-09/100' 0 9 "$TEST_DIR/exact.body" ''
+printf 'HTTP/1.1 302 Found\r\nContent-Range: bytes 0-9/100\r\n\r\nHTTP/2 206\r\n\r\n' > "$TEST_DIR/headers"
+read_range_headers "$TEST_DIR/headers"
+[ "$HTTP_STATUS" = 206 ] && [ "$HTTP_CONTENT_RANGE" = INVALID ]
+printf 'HTTP/2 206\r\nContent-Range: bytes 0-9/100\r\nContent-Range: bytes 0-9/100\r\n' > "$TEST_DIR/headers"
+read_range_headers "$TEST_DIR/headers"
+[ "$HTTP_CONTENT_RANGE" = INVALID ]
+printf 'PASS: strict end, safe integers, final-response headers and duplicate-range rejection.\n'

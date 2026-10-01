@@ -23,3 +23,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+
+# Chromium session and optional isolated dependency material
+Cookies
+Cookies-*
+Local State
+chromium-filtered.*/
+.venv*/
+venv*/
