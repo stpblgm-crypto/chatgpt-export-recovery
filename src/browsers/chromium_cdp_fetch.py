@@ -283,6 +283,7 @@ def main() -> int:
 
     if ns.start < 0 or ns.end < ns.start:
         fail("invalid range")
+    maximum = ns.end - ns.start + 1
     secret = Path(ns.url_file)
     output = Path(ns.output)
     headers_path = Path(ns.headers)
@@ -334,19 +335,25 @@ def main() -> int:
             return 22 if status in (401, 403) else 24
 
         output.parent.mkdir(parents=True, exist_ok=True)
+        written = 0
         with output.open("wb") as out:
             os.chmod(output, 0o600)
             while True:
                 chunk = ws.call("IO.read", {"handle": stream, "size": 1048576})
                 data = chunk.get("data", "")
+                blob = b""
                 if data:
                     if chunk.get("base64Encoded"):
-                        out.write(base64.b64decode(data, validate=True))
+                        blob = base64.b64decode(data, validate=True)
                     else:
                         try:
-                            out.write(data.encode("latin-1"))
+                            blob = data.encode("latin-1")
                         except UnicodeEncodeError:
                             fail("CDP returned non-base64 binary data that cannot be preserved")
+                    if written + len(blob) > maximum:
+                        raise ValueError("CDP response exceeded requested range")
+                    out.write(blob)
+                    written += len(blob)
                 if chunk.get("eof"):
                     break
             out.flush()
