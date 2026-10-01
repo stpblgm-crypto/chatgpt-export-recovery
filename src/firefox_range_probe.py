@@ -11,13 +11,16 @@ from selenium.webdriver.firefox.service import Service
 
 
 def snapshot_cookie_db(src: Path, dst: Path) -> None:
-    source = sqlite3.connect(f"file:{src}?mode=ro", uri=True, timeout=2)
-    target = sqlite3.connect(dst)
-    try:
-        source.backup(target, pages=256, sleep=0.05)
-    finally:
-        target.close()
-        source.close()
+    import shutil
+    wal = Path(str(src) + "-wal")
+    shm = Path(str(src) + "-shm")
+    if wal.is_file():
+        shutil.copy2(wal, Path(str(dst) + "-wal"))
+    shutil.copy2(src, dst)
+    if wal.is_file():
+        shutil.copy2(wal, Path(str(dst) + "-wal"))
+    if shm.is_file():
+        shutil.copy2(shm, Path(str(dst) + "-shm"))
 
 
 def load_chatgpt_cookies(db: Path):
@@ -81,10 +84,11 @@ def main():
 
         opts = Options()
         opts.add_argument("-headless")
-        opts.binary_location = "/snap/bin/firefox"
-        service = Service("/snap/bin/geckodriver")
+        opts.binary_location = "/snap/firefox/current/usr/lib/firefox/firefox"
+        service = Service("/snap/bin/geckodriver", log_output=str(Path(td) / "geckodriver.log"))
         driver = webdriver.Firefox(service=service, options=opts)
         try:
+            driver.set_page_load_timeout(30)
             driver.set_script_timeout(90)
             driver.get("https://chatgpt.com/")
             added = sum(1 for row in rows if add_cookie(driver, row))

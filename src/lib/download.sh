@@ -266,6 +266,17 @@ download_recover() {
                 return 2
             fi
             ;;
+        firefox-webdriver)
+            transport_python="${CHATGPT_RECOVERY_FIREFOX_WEBDRIVER_PYTHON:-python3}"
+            command -v geckodriver >/dev/null 2>&1 || {
+                printf 'FAIL: firefox-webdriver transport requires geckodriver.\n' >&2
+                return 2
+            }
+            if [ ! -f "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/transports/firefox_webdriver_range.py" ]; then
+                printf 'FAIL: firefox-webdriver transport helper is missing.\n' >&2
+                return 2
+            fi
+            ;;
         *)
             printf 'FAIL: unsupported transport.\n' >&2
             return 2
@@ -417,7 +428,7 @@ download_recover() {
                 read_range_headers "$headers"
                 status="$HTTP_STATUS"
                 content_range="$HTTP_CONTENT_RANGE"
-            else
+            elif [ "$transport" = "curl-cffi" ]; then
                 transport_python="${CHATGPT_RECOVERY_CURL_CFFI_PYTHON:-python3}"
                 transport_helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/transports/curl_cffi_range.py"
                 "$transport_python" "$transport_helper" \
@@ -431,9 +442,23 @@ download_recover() {
                 rc=$?
                 status="$(awk -F= '$1=="http"{print $2}' "$headers" 2>/dev/null)"
                 content_range="$(awk -F= '$1=="content_range"{sub(/^[^=]*=/,""); print}' "$headers" 2>/dev/null)"
-                [ -n "$status" ] || status="INVALID"
-                [ -n "$content_range" ] || content_range="INVALID"
+            else
+                transport_python="${CHATGPT_RECOVERY_FIREFOX_WEBDRIVER_PYTHON:-python3}"
+                transport_helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/transports/firefox_webdriver_range.py"
+                "$transport_python" "$transport_helper" \
+                    --url-config "$url_config" \
+                    --cookie-jar "$cookie_jar" \
+                    --range "${pos}-${requested_end}" \
+                    --output "$segment" \
+                    --meta "$headers" \
+                    --headless \
+                    2>"$curl_error"
+                rc=$?
+                status="$(awk -F= '$1=="http"{print $2}' "$headers" 2>/dev/null)"
+                content_range="$(awk -F= '$1=="content_range"{sub(/^[^=]*=/,""); print}' "$headers" 2>/dev/null)"
             fi
+            [ -n "$status" ] || status="INVALID"
+            [ -n "$content_range" ] || content_range="INVALID"
 
             printf '    transport=%s rc=%s http=%s\n' "$transport" "$rc" "${status:-UNKNOWN}"
             # Transport diagnostics never print cookie values, signed URLs, or raw headers.

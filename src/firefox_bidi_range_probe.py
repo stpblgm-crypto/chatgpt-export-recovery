@@ -43,6 +43,7 @@ def main():
         td=Path(td); dl=td/"downloads"; dl.mkdir()
         snap=td/"cookies.sqlite"; snapshot_cookie_db(Path(a.profile)/"cookies.sqlite",snap)
         opts=Options(); opts.add_argument("-headless")
+        opts.set_capability("webSocketUrl", True)
         opts.binary_location="/snap/firefox/current/usr/lib/firefox/firefox"
         opts.set_preference("browser.download.folderList",2)
         opts.set_preference("browser.download.dir",str(dl))

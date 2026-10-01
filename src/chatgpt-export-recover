@@ -38,7 +38,7 @@ Options:
   --expected-sha256 HEX  Required with --checkpoint-file; checked before export I/O.
   --chunk-size BYTES       Base segment size (default: 134217728 / 128 MiB).
   --min-chunk-size BYTES   Retry floor (default: 16777216 / 16 MiB).
-  --transport NAME         curl (default) or curl-cffi (EXPERIMENTAL).
+  --transport NAME         curl (default), curl-cffi, or firefox-webdriver (EXPERIMENTAL).
   --transport-profile NAME Browser fingerprint for curl-cffi (default: chrome).
   -h, --help               Show this help.
 
