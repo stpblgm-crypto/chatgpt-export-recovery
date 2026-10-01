@@ -1,8 +1,13 @@
-# Chromium: EXPERIMENTAL / NOT LIVE VERIFIED
+# Chromium: EXPERIMENTAL / NOT END-TO-END VERIFIED
 
-This provider has passed synthetic tests only. Browser/profile detection is not
-proof of usable authentication, and a complete live ZIP recovery has not been
-verified. The Firefox provider and historical verified-run record are preserved.
+This provider has passed synthetic tests and one authenticated bounded live
+Range probe. A complete live ZIP recovery has not been verified. Browser/profile
+detection alone is not proof of usable authentication. The Firefox provider and
+historical verified-run record are preserved.
+
+The [2026-10-01 live-probe record](LIVE_PROBE_2026-10-01.md) documents HTTP 206
+validation followed by a disk-capacity stop before any append. Full recovery and
+final ZIP validation remain unperformed; the current hold is DISK_CAPACITY.
 
 ## Runtime and permission boundary
 
@@ -13,7 +18,7 @@ make its filesystem, cookies, debugging connection, or credentials available to
 this process. Do not attach to a private debugging pipe, inspect hidden runtime
 state, disable browser encryption, or work around a denied operation.
 
-Status remains EXPERIMENTAL / NOT LIVE VERIFIED with either partition option.
+Status remains EXPERIMENTAL / NOT END-TO-END VERIFIED with either partition option.
 
 The provider does not use CDP, inspect process descriptors, launch browsers,
 automate login/MFA, or open a remote debugging port. If permitted session access

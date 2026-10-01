@@ -13,7 +13,7 @@ Future Chromium-family providers must use the operating system's supported
 keyring integration. They must not bypass browser encryption or persist
 decrypted cookies.
 
-`chromium.sh` / `chromium_cookies.py` are EXPERIMENTAL / NOT LIVE VERIFIED.
+`chromium.sh` / `chromium_cookies.py` are EXPERIMENTAL / NOT END-TO-END VERIFIED.
 The standard backend is plaintext-only; the optional browser-cookie3 backend
 requires explicit selection and permitted runtime session access. See
 [`docs/CHROMIUM_EXPERIMENTAL.md`](../../docs/CHROMIUM_EXPERIMENTAL.md).

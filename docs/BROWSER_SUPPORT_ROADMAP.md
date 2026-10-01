@@ -11,12 +11,15 @@ sidecars, and container partitioning through `originAttributes`.
 
 ## Experimental Chromium provider
 
-Chromium and Chrome now have an EXPERIMENTAL / NOT LIVE VERIFIED provider.
+Chromium and Chrome now have an EXPERIMENTAL / NOT END-TO-END VERIFIED provider.
 Bounded profile discovery, explicit profile selection, a default plaintext-only
 backend, and an opt-in pinned `browser-cookie3` adapter are implemented. Synthetic
 tests cover version-24 v10 cookies without accessing a real OS keyring. Unknown
 encryption fails closed. Partitioned cookies fail closed by default; explicit
-unpartitioned-only selection omits them without merging values. No live recovery is claimed.
+unpartitioned-only selection omits them without merging values.
+A [bounded authenticated live probe](LIVE_PROBE_2026-10-01.md) passed HTTP 206
+validation, then stopped for insufficient disk before append. No complete live
+recovery is claimed; the current hold is DISK_CAPACITY.
 See [the experimental guide](CHROMIUM_EXPERIMENTAL.md) for runtime boundaries.
 
 ## Further verification and providers

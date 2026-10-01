@@ -31,3 +31,13 @@ All notable changes to this project are documented here.
 - Keep default mixed-partition rejection and experimental/unverified status.
 - Add omission, unsupported-prefix isolation, empty-selection and invalid-option
   regression tests. No partitioned values are merged into the output jar.
+
+### Limited live-probe provenance (2026-10-01)
+
+- Record one authenticated Chromium 128 MiB HTTP 206 probe with exact range and
+  body validation, after starting checkpoint size/SHA256 guards passed.
+- Record exit 28 at the remaining-space plus 1 GiB reserve gate, before any
+  append; checkpoint pathname and size remained unchanged.
+- Record cleanup of temporary session material and private URL input.
+- Full recovery and final ZIP/SHA256 verification remain unperformed. Chromium
+  remains EXPERIMENTAL / NOT END-TO-END VERIFIED; hold reason: DISK_CAPACITY.

@@ -94,14 +94,30 @@ permission boundary, options, and recovery procedure.
 | 128 MiB segmented recovery | VERIFIED |
 | Final ZIP integrity test | VERIFIED |
 | Firefox Flatpak | NOT YET VERIFIED |
-| Chrome | EXPERIMENTAL / NOT LIVE VERIFIED |
-| Chromium | EXPERIMENTAL / NOT LIVE VERIFIED |
+| Chrome | EXPERIMENTAL / NOT END-TO-END VERIFIED |
+| Chromium | EXPERIMENTAL / NOT END-TO-END VERIFIED |
 | Brave | NOT IMPLEMENTED |
 | Edge | NOT IMPLEMENTED |
 
 `VERIFIED` refers to the preserved 2026-08-26 real-world Firefox baseline and,
 where applicable, the included offline regression tests. The modular refactor
 has not yet received a second live export run.
+
+## Limited live probe (2026-10-01)
+
+The experimental Chromium provider completed one authenticated 128 MiB Range
+probe with exact HTTP 206 boundaries and matching body length. The existing
+checkpoint's starting size/SHA256 guards passed. The remote total showed that
+available disk space was insufficient for the remaining bytes plus the 1 GiB
+reserve, so the tool exited with code 28 **before any append**. The original
+checkpoint stayed at its original pathname and size; an independent post-attempt
+SHA256 check confirmed unchanged content. Temporary session material and the
+private URL input were cleaned up.
+
+Full recovery, final ZIP integrity and a final archive SHA256 were **not**
+completed. Status: **HOLD: DISK_CAPACITY**. No supported resize mechanism was
+available in that runtime. See the [limited live-probe record](docs/LIVE_PROBE_2026-10-01.md)
+for numeric evidence and verification boundaries.
 
 ## Tests
 
@@ -146,7 +162,7 @@ adaptive retries, and stable-total enforcement. No live browser is accessed.
 ## Limitations and roadmap
 
 This release is Linux-only and has no GUI, extension, login automation,
-telemetry, scheduled export, or external SaaS dependency. Chromium support is EXPERIMENTAL / NOT LIVE VERIFIED. The default plaintext
+telemetry, scheduled export, or external SaaS dependency. Chromium support is EXPERIMENTAL / NOT END-TO-END VERIFIED. The default plaintext
 backend fails on encrypted cookies; an explicitly selected, pinned
 `browser-cookie3` adapter supports authorized local OS facilities without
 custom cryptography or CDP. See [the guide](docs/CHROMIUM_EXPERIMENTAL.md) and
