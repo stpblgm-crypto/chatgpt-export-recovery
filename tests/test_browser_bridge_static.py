@@ -9,6 +9,7 @@ manifest=(ext/"manifest.json").read_text()
 assert "backend-api/estuary/content" in bg
 assert 'headers:' in bg and 'Range' in bg
 assert "discoverExportUrl" in bg
+assert 'state.status === "CANARY_PASS"' in bg and 'state.status = "TAIL_READY"' in bg
 assert "signed" not in manifest.lower() or "signed" not in manifest
 assert "__SIGNED_URL__" not in bg
 cp=subprocess.run(["node","--check",str(ext/"background.js")],capture_output=True,text=True)

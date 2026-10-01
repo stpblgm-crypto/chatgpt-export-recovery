@@ -137,9 +137,20 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.action.onClicked.addListener(async () => {
-  const state = await getState();
-  if (["CANARY_PENDING","CANARY_HOLD","INIT"].includes(state.status)) await runCanary();
-  else if (["TAIL_READY","TAIL_RUNNING","TAIL_HOLD"].includes(state.status)) await runTail();
+  let state = await getState();
+  if (["CANARY_PENDING","CANARY_HOLD","INIT"].includes(state.status)) {
+    await runCanary();
+  } else if (state.status === "CANARY_PASS") {
+    state.status = "TAIL_READY";
+    state.nextStart = cfg.start;
+    state.chunkIndex = 0;
+    state.completed = [];
+    state.error = null;
+    await setState(state);
+    await runTail();
+  } else if (["TAIL_READY","TAIL_RUNNING","TAIL_HOLD"].includes(state.status)) {
+    await runTail();
+  }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
