@@ -1,0 +1,2 @@
+# Optional Firefox WebDriver transport.
+selenium==4.50.0
