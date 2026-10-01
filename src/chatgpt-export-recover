@@ -29,14 +29,17 @@ Options:
   --output FILE            Final ZIP path (required).
   --browser NAME           auto (default), firefox, or chromium (EXPERIMENTAL).
   --profile DIR           Explicit Chromium profile (Default or Profile N).
+  --cookie-db FILE        Explicit Chromium/Opera cookie database override.
   --cookie-backend NAME   plaintext (default) or browser-cookie3 (opt-in).
   --cookie-partition NAME reject (default) or explicitly unpartitioned only.
-  --chromium-product NAME chromium (default) or chrome keyring identity.
+  --chromium-product NAME chromium (default), chrome, or opera keyring identity.
   --checkpoint-file FILE Existing checkpoint, including the output itself.
   --expected-size BYTES  Required with --checkpoint-file; checked before export I/O.
   --expected-sha256 HEX  Required with --checkpoint-file; checked before export I/O.
   --chunk-size BYTES       Base segment size (default: 134217728 / 128 MiB).
   --min-chunk-size BYTES   Retry floor (default: 16777216 / 16 MiB).
+  --transport NAME         curl (default) or curl-cffi (EXPERIMENTAL).
+  --transport-profile NAME Browser fingerprint for curl-cffi (default: chrome).
   -h, --help               Show this help.
 
 The signed URL and cookie values are never printed by this program.
@@ -57,6 +60,8 @@ minimum_chunk_size=16777216
 checkpoint_file=""
 expected_size=""
 expected_sha256=""
+transport="curl"
+transport_profile="chrome"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -82,11 +87,12 @@ while [ "$#" -gt 0 ]; do
             browser="$2"
             shift 2
             ;;
-        --profile|--cookie-backend|--cookie-partition|--chromium-product|--checkpoint-file|--expected-size|--expected-sha256)
+        --profile|--cookie-db|--cookie-backend|--cookie-partition|--chromium-product|--checkpoint-file|--expected-size|--expected-sha256)
             option="$1"
             [ "$#" -ge 2 ] || die "option requires a value"
             case "$option" in
                 --profile) export CHATGPT_RECOVERY_CHROMIUM_PROFILE="$2" ;;
+                --cookie-db) export CHATGPT_RECOVERY_CHROMIUM_COOKIE_DB="$2" ;;
                 --cookie-backend) export CHATGPT_RECOVERY_CHROMIUM_BACKEND="$2" ;;
                 --cookie-partition) export CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION="$2" ;;
                 --chromium-product) export CHATGPT_RECOVERY_CHROMIUM_PRODUCT="$2" ;;
@@ -104,6 +110,16 @@ while [ "$#" -gt 0 ]; do
         --min-chunk-size)
             [ "$#" -ge 2 ] || die "--min-chunk-size requires a value"
             minimum_chunk_size="$2"
+            shift 2
+            ;;
+        --transport)
+            [ "$#" -ge 2 ] || die "--transport requires a value"
+            transport="$2"
+            shift 2
+            ;;
+        --transport-profile)
+            [ "$#" -ge 2 ] || die "--transport-profile requires a value"
+            transport_profile="$2"
             shift 2
             ;;
         -h|--help)
@@ -230,5 +246,7 @@ download_recover \
     "$minimum_chunk_size" \
     "$checkpoint_file" \
     "$expected_size" \
-    "$expected_sha256"
+    "$expected_sha256" \
+    "$transport" \
+    "$transport_profile"
 exit $?

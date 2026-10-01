@@ -20,5 +20,7 @@ for test_script in "${tests[@]}"; do
 done
 
 python3 -B "$TEST_DIR/test_chromium_provider.py"
+python3 -B "$TEST_DIR/test_browser_bridge_static.py"
+python3 -B "$TEST_DIR/test_browser_bridge_assembler.py"
 
-printf '\nPASS: all %s offline test scripts completed successfully.\n' "${#tests[@]}"
+printf '\nPASS: all %s offline shell suites plus Python provider/bridge tests completed successfully.\n' "${#tests[@]}"

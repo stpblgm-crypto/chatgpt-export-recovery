@@ -217,6 +217,8 @@ download_recover() {
     local checkpoint_override="${8-}"
     local expected_size="${9-}"
     local expected_sha256="${10-}"
+    local transport="${11:-curl}"
+    local transport_profile="${12:-chrome}"
     local part="${checkpoint_override:-${final}.part}"
     local segment="$work_dir/download.segment.current"
     local headers="$work_dir/headers"
@@ -225,6 +227,7 @@ download_recover() {
     local output_dir start pos total segment_no current_chunk attempt
     local requested_end rc status content_range next free need margin
     local stamp saved expected_after validation_reason actual_hash
+    local transport_python transport_helper
 
     if [ -z "$url" ] || [ -z "$final" ] || [ ! -f "$cookie_jar" ] || [ ! -d "$work_dir" ]; then
         printf 'FAIL: download engine received incomplete inputs\n' >&2
@@ -248,7 +251,26 @@ download_recover() {
         return 2
     fi
 
-    require_bounded_curl || return 2
+    case "$transport" in
+        curl)
+            require_bounded_curl || return 2
+            ;;
+        curl-cffi)
+            transport_python="${CHATGPT_RECOVERY_CURL_CFFI_PYTHON:-python3}"
+            if ! "$transport_python" -c 'import curl_cffi' >/dev/null 2>&1; then
+                printf 'FAIL: curl-cffi transport requires the optional curl_cffi package.\n' >&2
+                return 2
+            fi
+            if [ ! -f "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/transports/curl_cffi_range.py" ]; then
+                printf 'FAIL: curl-cffi transport helper is missing.\n' >&2
+                return 2
+            fi
+            ;;
+        *)
+            printf 'FAIL: unsupported transport.\n' >&2
+            return 2
+            ;;
+    esac
 
     output_dir="$(dirname -- "$final")"
     if [ ! -d "$output_dir" ]; then
@@ -384,20 +406,37 @@ download_recover() {
             : > "$headers"
             : > "$curl_error"
 
-            curl --disable --config "$url_config" "${curl_common[@]}" \
-                --range "${pos}-${requested_end}" \
-                --max-filesize "$((requested_end - pos + 1))" \
-                --dump-header "$headers" \
-                --output "$segment" \
-                2>"$curl_error"
-            rc=$?
+            if [ "$transport" = "curl" ]; then
+                curl --disable --config "$url_config" "${curl_common[@]}" \
+                    --range "${pos}-${requested_end}" \
+                    --max-filesize "$((requested_end - pos + 1))" \
+                    --dump-header "$headers" \
+                    --output "$segment" \
+                    2>"$curl_error"
+                rc=$?
+                read_range_headers "$headers"
+                status="$HTTP_STATUS"
+                content_range="$HTTP_CONTENT_RANGE"
+            else
+                transport_python="${CHATGPT_RECOVERY_CURL_CFFI_PYTHON:-python3}"
+                transport_helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/transports/curl_cffi_range.py"
+                "$transport_python" "$transport_helper" \
+                    --url-config "$url_config" \
+                    --cookie-jar "$cookie_jar" \
+                    --range "${pos}-${requested_end}" \
+                    --output "$segment" \
+                    --meta "$headers" \
+                    --impersonate "$transport_profile" \
+                    2>"$curl_error"
+                rc=$?
+                status="$(awk -F= '$1=="http"{print $2}' "$headers" 2>/dev/null)"
+                content_range="$(awk -F= '$1=="content_range"{sub(/^[^=]*=/,""); print}' "$headers" 2>/dev/null)"
+                [ -n "$status" ] || status="INVALID"
+                [ -n "$content_range" ] || content_range="INVALID"
+            fi
 
-            read_range_headers "$headers"
-            status="$HTTP_STATUS"
-            content_range="$HTTP_CONTENT_RANGE"
-            printf '    curl_rc=%s http=%s\n' "$rc" "${status:-UNKNOWN}"
-            # Raw HTTP headers can contain credentials or attacker-controlled text.
-            # Only validated numeric range fields are logged below.
+            printf '    transport=%s rc=%s http=%s\n' "$transport" "$rc" "${status:-UNKNOWN}"
+            # Transport diagnostics never print cookie values, signed URLs, or raw headers.
 
             if [ "$rc" -ne 0 ]; then
                 rm -f -- "$segment"

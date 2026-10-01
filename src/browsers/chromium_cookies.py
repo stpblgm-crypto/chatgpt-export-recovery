@@ -10,6 +10,7 @@ import importlib.metadata
 import io
 import os
 import signal
+import shutil
 import tempfile
 from pathlib import Path
 import re
@@ -87,6 +88,34 @@ def private_write(path, text):
         stream.write(text)
 
 
+def snapshot_database(database, work):
+    online = work / "chromium-cookies.online.sqlite"
+    try:
+        source = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=1)
+        destination = sqlite3.connect(online)
+        try:
+            source.backup(destination, pages=256, sleep=0.05)
+        finally:
+            destination.close()
+            source.close()
+        return online, "online-backup"
+    except Exception:
+        try:
+            online.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    copied = work / "chromium-cookies.copy.sqlite"
+    wal_source = Path(str(database) + "-wal")
+    shm_source = Path(str(database) + "-shm")
+    shutil.copy2(database, copied)
+    if wal_source.is_file():
+        shutil.copy2(wal_source, Path(str(copied) + "-wal"))
+    if shm_source.is_file():
+        shutil.copy2(shm_source, Path(str(copied) + "-shm"))
+    return copied, "db-wal-copy"
+
+
 def cookie_rows(database):
     # URL-escape the filename: '?' and '#' in paths must never alter URI options.
     with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=2) as conn:
@@ -127,8 +156,8 @@ def library_values(rows, version, work):
         raise ProviderError("optional browser-cookie3 0.20.1 is not installed in this Python environment") from None
 
     product = os.environ.get("CHATGPT_RECOVERY_CHROMIUM_PRODUCT", "chromium")
-    if product not in ("chromium", "chrome"):
-        raise ProviderError("Chromium product must be chromium or chrome")
+    if product not in ("chromium", "chrome", "opera"):
+        raise ProviderError("Chromium product must be chromium, chrome, or opera")
     def timeout(_signum, _frame):
         raise ProviderError("optional cookie adapter timed out")
     previous_handler = signal.signal(signal.SIGALRM, timeout)
@@ -183,7 +212,8 @@ def build(jar, meta, work):
     selected = {}
     omitted_partitioned = 0
     now = int(time.time())
-    rows, version = cookie_rows(available[0])
+    snapshot, snapshot_method = snapshot_database(available[0], work)
+    rows, version = cookie_rows(snapshot)
     live_rows = []
     for row in rows:
         host, path, name, value, encrypted, expires, secure, http_only, persistent, partition, cross_site, accessed = row
@@ -240,7 +270,7 @@ def build(jar, meta, work):
     private_write(jar, "# Netscape HTTP Cookie File\n# Experimental Chromium session snapshot.\n" +
                   "\n".join(selected[key][0] for key in sorted(selected)) + "\n")
     private_write(meta, "profile=explicit-or-single-profile\nsource=chromium-sqlite-readonly\n"
-                  "snapshot_method=read-transaction\nbackend=" + backend + "\ncookies=" + str(len(selected)) +
+                  "snapshot_method=" + snapshot_method + "\nbackend=" + backend + "\ncookies=" + str(len(selected)) +
                   "\nchatgpt_cookies=" + str(sum(k[0].lstrip(".") == "chatgpt.com" or
                                                k[0].endswith(".chatgpt.com") for k in selected)) +
                   "\norigin_partitioned=no\npartition_selection=" + partition_selection +

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT Export Range Bridge",
+  "version": "0.1.0",
+  "description": "Local-only range downloader bridge for a user-owned ChatGPT export.",
+  "permissions": ["downloads", "storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://openai.com/*",
+    "https://*.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ChatGPT Export Range Bridge"
+  }
+}
