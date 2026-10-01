@@ -6,9 +6,11 @@ archives on Linux.
 > Unofficial utility. Not affiliated with or endorsed by OpenAI.
 
 Large browser downloads can stop before the complete archive reaches disk. This
-tool reuses an authenticated local Firefox session, downloads bounded HTTP Range
-segments, validates every response before append, and resumes from the exact
-size of the durable `.part` checkpoint.
+tool downloads bounded HTTP Range segments, validates every response before
+append, and resumes from the exact size of the durable `.part` checkpoint.
+Firefox uses a temporary local cookie snapshot. The experimental Chromium CDP
+provider instead uses the already-running browser network stack and never reads,
+decrypts, exports, or prints Chromium cookie values.
 
 The verified real-world baseline is Linux with Firefox Snap and 128 MiB
 segments. The modular entrypoint is structured so browser providers can be
@@ -40,7 +42,9 @@ from a mode-0600 temporary config so it is not placed in curl's argument list.
 - Linux and Bash 4 or newer
 - `curl`, Python 3 with `sqlite3`, `stat`, `sync`, and `sha256sum`
 - `unzip`, or Python's standard `zipfile` module as fallback
-- a local Firefox profile signed in to the same ChatGPT account as the export
+- for Firefox mode: a local Firefox profile signed in to the same ChatGPT account
+- for Chromium CDP mode: an already-running Chromium-family ChatGPT/OpenAI page
+  with a local DevTools endpoint exposed by that browser/runtime
 - enough free space for the remaining bytes plus a 1 GiB safety margin
 
 Firefox profile discovery checks a running process first, then bounded known
@@ -87,8 +91,8 @@ under a no-overwrite timestamped name.
 | 128 MiB segmented recovery | VERIFIED |
 | Final ZIP integrity test | VERIFIED |
 | Firefox Flatpak | NOT YET VERIFIED |
-| Chrome | NOT IMPLEMENTED |
-| Chromium | NOT IMPLEMENTED |
+| Chrome via local CDP | EXPERIMENTAL |
+| Chromium via local CDP | EXPERIMENTAL |
 | Brave | NOT IMPLEMENTED |
 | Edge | NOT IMPLEMENTED |
 
@@ -105,8 +109,10 @@ No ChatGPT account or network access is required:
 ```
 
 The suite checks every shell file with `bash -n`, exercises accepted and
-rejected Range responses, verifies a resumed append, and uses a synthetic
-Firefox cookie database to prove that diagnostics do not expose cookie values.
+rejected Range responses, verifies a resumed append, uses a synthetic Firefox
+cookie database to prove that diagnostics do not expose cookie values, and runs
+a synthetic local CDP server to verify a browser-native 206 Range fetch without
+leaking the signed URL.
 
 ## Troubleshooting
 
@@ -126,7 +132,9 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 
 - `src/chatgpt-export-recover` — current CLI
 - `src/browsers/firefox.sh` — Firefox session provider
-- `src/lib/download.sh` — browser-independent Range/checkpoint engine
+- `src/browsers/chromium_cdp_fetch.py` — experimental browser-native Chromium CDP segment transport
+- `src/lib/download.sh` — Firefox/curl Range/checkpoint engine
+- `src/lib/download_cdp.sh` — Chromium CDP Range/checkpoint engine
 - `legacy/` — sanitized archival baseline; not the primary interface
 - `docs/` — architecture, security, verified-run provenance, and roadmap
 - `tests/` — offline regression suite
@@ -134,12 +142,46 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 ## Limitations and roadmap
 
 This release is Linux-only and has no GUI, extension, login automation,
-telemetry, scheduled export, or external SaaS dependency. Chromium-family
-support requires an OS-keyring-aware provider; browser encryption will not be
-bypassed. See [the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
+telemetry, scheduled export, or external SaaS dependency. Chromium CDP support
+is deliberately browser-native: it does not decrypt the Chromium cookie store.
+It requires a local DevTools endpoint already exposed by the browser/runtime and
+fails closed when one is unavailable. See
+[the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
 
 ## License
 
 [MIT](LICENSE). The repository consists of the supplied original baseline and
 the original bootstrap/refactor code; no third-party source fragments are
 included.
+
+
+## Experimental Chromium CDP recovery
+
+For a Chromium-family browser whose existing authenticated ChatGPT/OpenAI page
+is reachable through a local DevTools endpoint:
+
+```bash
+./src/chatgpt-export-recover \
+  --output "$HOME/Downloads/chatgpt-data-export.zip" \
+  --browser chromium-cdp
+```
+
+If an invalid browser-downloaded final file already exists at the output path,
+the tool first moves it to `.part`, then requests only bytes starting at that
+exact checkpoint. The default CDP segment is 8 MiB with an adaptive floor of
+1 MiB.
+
+The provider uses `Network.loadNetworkResource(includeCredentials=true)` and
+`IO.read` inside the existing browser. It does **not** read or decrypt the
+Chromium cookie database and does not print the signed export URL.
+
+If auto-discovery cannot find the browser's local DevTools HTTP endpoint, an
+explicit local endpoint may be supplied only for that runtime:
+
+```bash
+CHATGPT_RECOVERY_CDP_ENDPOINT=http://127.0.0.1:9222 \
+  ./src/chatgpt-export-recover --browser chromium-cdp --output /path/export.zip
+```
+
+This mode remains **EXPERIMENTAL** until a complete live export recovery passes
+HTTP Range validation, full ZIP integrity, and provenance recording.

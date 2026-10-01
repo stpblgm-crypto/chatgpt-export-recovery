@@ -9,21 +9,36 @@ an end-to-end real export run.
 Firefox-specific state includes `profiles.ini`, `cookies.sqlite`, its WAL/SHM
 sidecars, and container partitioning through `originAttributes`.
 
-## Next providers
+## Chromium CDP experimental provider
+
+A first Chromium-family provider now exists on
+`feature/chromium-cdp-resume-v1`. It deliberately avoids Chromium cookie-store
+decryption. Instead it requires an already-running authenticated ChatGPT/OpenAI
+page with a local DevTools endpoint and asks the browser network stack to issue
+the Range request with `includeCredentials=true`.
+
+Security properties:
+- no Chromium cookie database reads;
+- no OS-keyring extraction;
+- no cookie values printed or persisted;
+- signed URL held only in mode-0600 runtime material;
+- local-loopback CDP only;
+- fail closed if no ChatGPT/OpenAI CDP target is reachable.
+
+The provider is **EXPERIMENTAL**, not VERIFIED. A complete live export recovery
+must still prove CDP availability in the target runtime, authenticated 206 Range
+semantics, interruption/resume, final ZIP integrity, and no secret leakage.
+
+## Next providers / hardening
 
 Planned investigation order:
 
-1. Google Chrome and Chromium on Linux.
-2. Chromium Snap.
-3. Brave and Microsoft Edge.
-4. Optional Opera and Vivaldi compatibility if their profile/keyring behavior
-   can reuse a proven Chromium provider.
-
-Chromium-family cookies may use `encrypted_value` and an operating-system
-keyring such as Secret Service/libsecret. A provider must use documented local
-OS facilities, select `Default` or `Profile N` explicitly, account for
-Snap/Flatpak paths, keep decrypted values ephemeral, and fail closed when safe
-decryption is unavailable.
+1. Complete a real Chromium CDP recovery and record provenance.
+2. Harden Chromium/Chrome/Chromium-Snap endpoint discovery.
+3. Brave and Microsoft Edge via the same CDP transport where compatible.
+4. Optional Opera/Vivaldi compatibility.
+5. Only if browser-native CDP is unavailable, investigate an OS-keyring-aware
+   cookie provider. Browser encryption must not be bypassed.
 
 ## Verification bar
 

@@ -9,6 +9,7 @@ tests=(
     test_range_validation.sh
     test_resume_logic.sh
     test_no_secret_output.sh
+    test_download_cdp_resume.sh
 )
 
 for test_script in "${tests[@]}"; do
@@ -16,4 +17,7 @@ for test_script in "${tests[@]}"; do
     bash "$TEST_DIR/$test_script"
 done
 
-printf '\nPASS: all %s offline test scripts completed successfully.\n' "${#tests[@]}"
+printf '\n==> %s\n' "test_chromium_cdp_transport.py"
+python3 "$TEST_DIR/test_chromium_cdp_transport.py"
+
+printf '\nPASS: all %s shell tests plus Chromium CDP transport test completed successfully.\n' "${#tests[@]}"
