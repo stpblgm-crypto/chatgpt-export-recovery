@@ -13,6 +13,8 @@ make its filesystem, cookies, debugging connection, or credentials available to
 this process. Do not attach to a private debugging pipe, inspect hidden runtime
 state, disable browser encryption, or work around a denied operation.
 
+Status remains EXPERIMENTAL / NOT LIVE VERIFIED with either partition option.
+
 The provider does not use CDP, inspect process descriptors, launch browsers,
 automate login/MFA, or open a remote debugging port. If permitted session access
 is unavailable, stop. There is no fallback to another user's or another
@@ -64,8 +66,17 @@ selecting it. For Chrome use `--chromium-product chrome`; Chromium is the defaul
 Only valid ChatGPT/OpenAI-domain rows enter a temporary filtered SQLite
 snapshot. Exact domain boundaries are checked, session expirations are
 normalized, and `meta.version` is preserved, including version 24's domain hash
-prefix. Partitioned cookies and unknown encryption prefixes (including `v20`)
-are rejected before calling the dependency. Linux `v10`/`v11` handling is
+prefix. Partitioned cookies are rejected by default. The explicit
+`--cookie-partition unpartitioned` option narrows selection to unpartitioned
+cookies only, before inspecting encrypted values or calling the dependency.
+Every row with a nonempty `top_frame_site_key` is omitted, including a
+first-party partition; no partitioned cookie is flattened or merged into the
+jar. If no usable unpartitioned cookies remain, the operation fails. This
+option is appropriate only when the authorized request intends the top-level,
+unpartitioned session; it does not prove that this session can authenticate the
+export. The default `--cookie-partition reject` retains mixed-partition failure.
+Unknown encryption prefixes (including `v20`) in selected cookies are rejected
+before calling the dependency. Linux `v10`/`v11` handling is
 upstream code; this repository implements no decryption algorithm. Unknown
 schemas, unavailable keys, timeout, unexpected returned cookies or an incomplete
 jar fail closed. The dependency has a 20-second invocation limit. Its temporary

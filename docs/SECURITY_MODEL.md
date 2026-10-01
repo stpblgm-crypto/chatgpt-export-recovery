@@ -57,8 +57,10 @@ markers, then checked with an installed secret scanner when available.
 
 Chromium session reads require authorized runtime access to the selected
 profile. Only exact ChatGPT/OpenAI domains enter the filtered private snapshot.
-Cookie partitions, unsupported encryption, missing keys and ambiguous profiles
-fail closed. The optional pinned library may use the local OS keyring only
+Cookie partitions fail closed by default. Explicit unpartitioned-only
+selection omits partitioned rows before optional decryption and never merges
+their values into a jar. Unsupported encryption in selected cookies, missing
+keys and ambiguous profiles fail closed. The optional pinned library may use the local OS keyring only
 when explicitly selected; plaintext mode does not. Neither mode accesses CDP,
 process descriptors, hidden browser state, or another environment's session.
 Dependency diagnostics are suppressed; the jar remains mode 0600. Library

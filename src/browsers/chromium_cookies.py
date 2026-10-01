@@ -177,13 +177,22 @@ def build(jar, meta, work):
     backend = os.environ.get("CHATGPT_RECOVERY_CHROMIUM_BACKEND", "plaintext")
     if backend not in ("plaintext", "browser-cookie3"):
         raise ProviderError("Chromium cookie backend must be plaintext or browser-cookie3")
+    partition_selection = os.environ.get("CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION", "reject")
+    if partition_selection not in ("reject", "unpartitioned"):
+        raise ProviderError("Chromium cookie partition must be reject or unpartitioned")
     selected = {}
+    omitted_partitioned = 0
     now = int(time.time())
     rows, version = cookie_rows(available[0])
     live_rows = []
     for row in rows:
         host, path, name, value, encrypted, expires, secure, http_only, persistent, partition, cross_site, accessed = row
         if not allowed_domain(host):
+            continue
+        # Explicit narrowing never flattens a partition into curl's global jar.
+        # Skip before encryption inspection or any optional dependency handling.
+        if partition and partition_selection == "unpartitioned":
+            omitted_partitioned += 1
             continue
         expiry = int(expires or 0) // 1000000 - CHROMIUM_EPOCH_SECONDS if expires else 0
         if not persistent:
@@ -234,7 +243,8 @@ def build(jar, meta, work):
                   "snapshot_method=read-transaction\nbackend=" + backend + "\ncookies=" + str(len(selected)) +
                   "\nchatgpt_cookies=" + str(sum(k[0].lstrip(".") == "chatgpt.com" or
                                                k[0].endswith(".chatgpt.com") for k in selected)) +
-                  "\norigin_partitioned=no\n")
+                  "\norigin_partitioned=no\npartition_selection=" + partition_selection +
+                  "\npartitioned_rows_omitted=" + str(omitted_partitioned) + "\n")
     print("Chromium session snapshot created; cookie values withheld.")
 
 

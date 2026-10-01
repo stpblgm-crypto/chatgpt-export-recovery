@@ -23,3 +23,11 @@ All notable changes to this project are documented here.
 - Extend offline synthetic/provider/resume/secret-output coverage.
 - Preserve Firefox source and historical live verification; Chromium is
   EXPERIMENTAL / NOT LIVE VERIFIED.
+
+### Experimental partition selection follow-up
+
+- Add explicit `--cookie-partition unpartitioned` narrowing for an authorized
+  top-level session. All partitioned rows are omitted before adapter access.
+- Keep default mixed-partition rejection and experimental/unverified status.
+- Add omission, unsupported-prefix isolation, empty-selection and invalid-option
+  regression tests. No partitioned values are merged into the output jar.

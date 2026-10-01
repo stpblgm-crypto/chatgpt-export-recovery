@@ -63,7 +63,9 @@ adapter selects one bounded or explicit profile and filters valid exact-domain
 cookies inside a read transaction. Plaintext is the default. With explicit
 opt-in, the pinned upstream dependency receives only a private filtered
 snapshot, including its schema version, and returns cookie values in memory.
-Partitions and unknown encryption schemes are rejected. No CDP or custom
+Partitions are rejected by default; an explicit unpartitioned-only selector
+omits all partitioned rows before dependency access. Unknown encryption schemes
+in selected rows are rejected. No CDP or custom
 cryptography is implemented. See [the guide](CHROMIUM_EXPERIMENTAL.md).
 
 The engine now supports a caller-approved in-place checkpoint guarded by its

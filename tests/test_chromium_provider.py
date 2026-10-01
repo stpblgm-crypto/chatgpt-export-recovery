@@ -27,7 +27,8 @@ class ChromiumTests(unittest.TestCase):
         self.home = Path(self.tmp.name)
         self.env = patch.dict(os.environ, {"HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                                           "CHATGPT_RECOVERY_CHROMIUM_COOKIE_DB": "", "CHATGPT_RECOVERY_CHROMIUM_PROFILE": "",
-                                          "CHATGPT_RECOVERY_CHROMIUM_BACKEND": "plaintext", "CHATGPT_RECOVERY_CHROMIUM_PRODUCT": "chromium"})
+                                          "CHATGPT_RECOVERY_CHROMIUM_BACKEND": "plaintext", "CHATGPT_RECOVERY_CHROMIUM_PRODUCT": "chromium",
+                                          "CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION": "reject"})
         self.env.start()
         self.addCleanup(self.env.stop)
         self.work = self.home / "chatgpt-export-recovery.fixture"
@@ -113,6 +114,46 @@ class ChromiumTests(unittest.TestCase):
 
     def test_partitioned_cookies_fail_closed(self):
         self.database(rows=[self.row(top_frame_site_key="https://chatgpt.com")])
+        self.assertEqual(self.build()[0], 3)
+        self.assertFalse(self.jar.exists())
+
+    def test_default_mixed_partitions_fail_closed(self):
+        self.database(rows=[self.row(), self.row(name="partitioned", top_frame_site_key="https://chatgpt.com")])
+        self.assertEqual(self.build()[0], 3)
+        self.assertFalse(self.jar.exists())
+
+    def test_explicit_unpartitioned_omits_partitioned_values(self):
+        self.database(rows=[self.row(), self.row(name="partitioned", value="PARTITIONED_MUST_NOT_BE_WRITTEN", top_frame_site_key="https://chatgpt.com")])
+        os.environ["CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION"] = "unpartitioned"
+        self.assertEqual(self.build()[0], 0)
+        self.assertIn(SECRET, self.jar.read_text())
+        self.assertNotIn("PARTITIONED_MUST_NOT_BE_WRITTEN", self.jar.read_text())
+        self.assertIn("partitioned_rows_omitted=1", self.meta.read_text())
+
+    def test_explicit_partition_filter_precedes_encryption_and_adapter(self):
+        self.database(rows=[self.row(value="", encrypted_value=b"v10synthetic"),
+                            self.row(name="partitioned", value="", encrypted_value=b"v20unsupported",
+                                     top_frame_site_key="https://chatgpt.com")])
+        os.environ["CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION"] = "unpartitioned"
+        os.environ["CHATGPT_RECOVERY_CHROMIUM_BACKEND"] = "browser-cookie3"
+        def fake_library(rows, version, work):
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][2], "session-test")
+            self.assertEqual(rows[0][9], "")
+            return {(".chatgpt.com", "/", "session-test"): SECRET}
+        with patch.object(provider, "library_values", side_effect=fake_library):
+            self.assertEqual(self.build()[0], 0)
+        self.assertNotIn("partitioned", self.jar.read_text())
+
+    def test_explicit_unpartitioned_only_partitioned_rows_fails(self):
+        self.database(rows=[self.row(top_frame_site_key="https://chatgpt.com")])
+        os.environ["CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION"] = "unpartitioned"
+        self.assertEqual(self.build()[0], 3)
+        self.assertFalse(self.jar.exists())
+
+    def test_unknown_partition_selection_fails(self):
+        self.database()
+        os.environ["CHATGPT_RECOVERY_CHROMIUM_COOKIE_PARTITION"] = "merge"
         self.assertEqual(self.build()[0], 3)
         self.assertFalse(self.jar.exists())
 

@@ -15,7 +15,8 @@ Chromium and Chrome now have an EXPERIMENTAL / NOT LIVE VERIFIED provider.
 Bounded profile discovery, explicit profile selection, a default plaintext-only
 backend, and an opt-in pinned `browser-cookie3` adapter are implemented. Synthetic
 tests cover version-24 v10 cookies without accessing a real OS keyring. Unknown
-encryption and partitioned cookies fail closed. No live recovery is claimed.
+encryption fails closed. Partitioned cookies fail closed by default; explicit
+unpartitioned-only selection omits them without merging values. No live recovery is claimed.
 See [the experimental guide](CHROMIUM_EXPERIMENTAL.md) for runtime boundaries.
 
 ## Further verification and providers
