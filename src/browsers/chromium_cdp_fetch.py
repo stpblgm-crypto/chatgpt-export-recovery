@@ -318,6 +318,13 @@ def main() -> int:
                 "options": {"disableCache": True, "includeCredentials": True},
             },
         )
+        # The Range header is needed only for the resource request. Reset it
+        # before streaming so unrelated background traffic on the page is not
+        # affected longer than necessary.
+        try:
+            ws.call("Network.setExtraHTTPHeaders", {"headers": {}})
+        except Exception:
+            pass
         resource = result.get("resource", {})
         status = int(resource.get("httpStatusCode") or 0)
         response_headers = resource.get("headers") or {}
