@@ -9,6 +9,7 @@ tests=(
     test_range_validation.sh
     test_resume_logic.sh
     test_no_secret_output.sh
+    test_download_cdp_resume.sh
 )
 
 for test_script in "${tests[@]}"; do
