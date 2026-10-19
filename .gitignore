@@ -23,3 +23,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+
+# Python app private recovery state and build residue
+*.recovery/
+*.egg-info/
+build/
+dist/

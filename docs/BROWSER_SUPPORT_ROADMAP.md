@@ -1,3 +1,22 @@
+# Browser support
+
+## Python direct-link app (0.2.0 candidate)
+
+The same Python/Tk UI targets Windows, Linux, and macOS. Chrome, Chromium,
+Firefox, Edge, Safari, Brave, Opera, and any other browser can supply a copied
+HTTPS download link. This route is independent of browser databases and does
+not extract credentials. The endpoint must support standalone byte ranges
+and a strong ETag; authenticated/session-only endpoints are unsupported.
+
+Regular browser partials can be imported read-only, with every byte checked
+against the server. Browser bundles/directories are not imported directly.
+All native desktop/platform and live-export acceptance remains pending;
+synthetic engine/controller tests do not prove universal browser integration.
+
+See [desktop app guide](DESKTOP_APP.md).
+
+## Preserved legacy roadmap
+
 # Browser support roadmap
 
 ## Current provider
