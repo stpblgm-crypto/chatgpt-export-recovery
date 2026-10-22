@@ -1,3 +1,24 @@
+# Desktop architecture (0.2.0 candidate)
+
+- `chatgpt_export_recovery/core.py`: HTTPS transport, strict Range validation,
+  OS output lock, durable metadata/checkpoints, integrity and publication.
+- `controller.py`: one non-daemon worker and a thread-safe event queue; no Tk
+  API is called by background code. A cancellation event reaches all loops.
+- `gui.py`: native Tk/ttk controls, main-thread event drain, file dialogs,
+  masked URL entry, progress, pause/resume and close confirmation.
+- `__main__.py`: GUI launcher and optional hidden-prompt terminal interface.
+
+The core accepts an injectable transport for deterministic offline tests.
+Production transport admits only HTTPS and verifies TLS; test transports do not
+relax the production URL policy. Protocol failures do not append; transport
+failures retry the same offset, at most four attempts with cancel-aware backoff.
+No response data is executed or extracted. No browser credentials are read.
+
+See [desktop app guide](DESKTOP_APP.md) for persistence, crash recovery,
+privacy, browser compatibility, and verification limits.
+
+## Preserved shell architecture
+
 # Architecture
 
 The current implementation separates session acquisition from transfer state.

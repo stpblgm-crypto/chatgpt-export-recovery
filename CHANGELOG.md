@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 candidate — 2026-10-19
+
+- Add a standard-library Python/Tk desktop app targeting Windows/Linux/macOS.
+- Add browser-independent direct-link input without cookie/profile access.
+- Add bounded Range retry, cancellable workers, crash-resumable hash-bound
+  checkpoints, strong ETag validation, original-preserving partial import,
+  ZIP/SHA256 verification, and atomic no-overwrite publication.
+- Add synthetic Python regression tests and desktop acceptance documentation.
+- Preserve the Linux/Firefox baseline and separate experimental CDP draft.
+- Native platform/live-export acceptance and packaged installers remain pending.
+
+
 All notable changes to this project are documented here.
 
 ## 0.1.0 - 2026-08-26

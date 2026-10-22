@@ -1,6 +1,23 @@
-# Browser support roadmap
+# Browser support
 
-## Current provider
+## Python direct-link app (0.2.0 candidate)
+
+The same Python/Tk UI targets Windows, Linux, and macOS. Chrome, Chromium,
+Firefox, Edge, Safari, Brave, Opera, and any other browser can supply a copied
+HTTPS download link. This route is independent of browser databases and does
+not extract credentials. The endpoint must support standalone byte ranges
+and a strong ETag; authenticated/session-only endpoints are unsupported.
+
+Regular browser partials can be imported read-only, with every byte checked
+against the server. Browser bundles/directories are not imported directly.
+All native desktop/platform and live-export acceptance remains pending;
+synthetic engine/controller tests do not prove universal browser integration.
+
+See [desktop app guide](DESKTOP_APP.md).
+
+## Linux shell providers
+
+### Current provider
 
 Firefox on Linux is implemented. The verified run used Firefox Snap. Regular
 Firefox and Firefox Flatpak paths are discovered, but Flatpak has not received
@@ -9,7 +26,7 @@ an end-to-end real export run.
 Firefox-specific state includes `profiles.ini`, `cookies.sqlite`, its WAL/SHM
 sidecars, and container partitioning through `originAttributes`.
 
-## Chromium CDP experimental provider
+### Chromium CDP experimental provider
 
 A first Chromium-family provider now exists on
 `feature/chromium-cdp-resume-v1`. It deliberately avoids Chromium cookie-store
@@ -29,7 +46,7 @@ The provider is **EXPERIMENTAL**, not VERIFIED. A complete live export recovery
 must still prove CDP availability in the target runtime, authenticated 206 Range
 semantics, interruption/resume, final ZIP integrity, and no secret leakage.
 
-## Next providers / hardening
+### Next providers / hardening
 
 Planned investigation order:
 
@@ -40,7 +57,7 @@ Planned investigation order:
 5. Only if browser-native CDP is unavailable, investigate an OS-keyring-aware
    cookie provider. Browser encryption must not be bypassed.
 
-## Verification bar
+### Verification bar
 
 A new browser moves from `NOT IMPLEMENTED` to `VERIFIED` only after synthetic
 tests, secret-output tests, interruption/resume tests, and a complete real-world
