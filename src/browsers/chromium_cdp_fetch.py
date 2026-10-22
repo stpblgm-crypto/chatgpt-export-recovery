@@ -53,9 +53,37 @@ def read_secret_url(path: Path) -> str:
     return url
 
 
-def http_json(url: str, timeout: float = 0.8) -> Any:
+def local_cdp_endpoint(endpoint: str) -> str:
+    """Return a canonical local HTTP origin without DNS-dependent aliases."""
+    endpoint = endpoint.strip()
+    if any(ord(c) <= 32 or ord(c) == 127 for c in endpoint) or any(c in endpoint for c in "?#"):
+        raise ValueError("invalid local CDP endpoint")
+    try:
+        p = urllib.parse.urlsplit(endpoint)
+        port = p.port
+        if (p.scheme != "http" or p.hostname not in ("127.0.0.1", "localhost", "::1")
+                or p.username is not None or p.password is not None
+                or p.path not in ("", "/") or p.netloc.endswith(":")
+                or (port is not None and not 1 <= port <= 65535)):
+            raise ValueError("invalid local CDP endpoint")
+    except ValueError:
+        raise ValueError("invalid local CDP endpoint") from None
+    host = "[::1]" if p.hostname == "::1" else "127.0.0.1"
+    return f"http://{host}:{port or 80}"
+
+
+class NoDiscoveryRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Even loopback redirects are unnecessary for the fixed discovery path.
+        return None
+
+
+def http_json(endpoint: str, timeout: float = 0.8) -> Any:
+    url = local_cdp_endpoint(endpoint) + "/json/list"
     req = urllib.request.Request(url, headers={"User-Agent": "chatgpt-export-recovery/1"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    # Discovery must not inherit environment/system proxies or follow redirects.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoDiscoveryRedirect())
+    with opener.open(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -63,7 +91,10 @@ def candidate_endpoints() -> Iterable[str]:
     seen = set()
     explicit = os.environ.get("CHATGPT_RECOVERY_CDP_ENDPOINT", "").strip()
     if explicit:
-        explicit = explicit.rstrip("/")
+        try:
+            explicit = local_cdp_endpoint(explicit)
+        except ValueError:
+            fail("CHATGPT_RECOVERY_CDP_ENDPOINT must be a local HTTP origin without credentials")
         if explicit not in seen:
             seen.add(explicit)
             yield explicit
@@ -113,7 +144,7 @@ def candidate_endpoints() -> Iterable[str]:
 def choose_target() -> Tuple[str, Dict[str, Any]]:
     for endpoint in candidate_endpoints():
         try:
-            targets = http_json(endpoint + "/json/list")
+            targets = http_json(endpoint)
         except Exception:
             continue
         pages = [x for x in targets if x.get("type") == "page" and x.get("webSocketDebuggerUrl")]
