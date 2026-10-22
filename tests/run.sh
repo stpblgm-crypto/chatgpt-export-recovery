@@ -17,7 +17,10 @@ for test_script in "${tests[@]}"; do
     bash "$TEST_DIR/$test_script"
 done
 
+printf '\n==> %s\n' "test_cdp_helper_packaging.py"
+python3 "$TEST_DIR/test_cdp_helper_packaging.py"
+
 printf '\n==> %s\n' "test_chromium_cdp_transport.py"
 python3 "$TEST_DIR/test_chromium_cdp_transport.py"
 
-printf '\nPASS: all %s shell tests plus Chromium CDP transport test completed successfully.\n' "${#tests[@]}"
+printf '\nPASS: all %s shell tests plus CDP packaging and transport tests completed successfully.\n' "${#tests[@]}"
