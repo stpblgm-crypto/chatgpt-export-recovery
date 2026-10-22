@@ -138,6 +138,7 @@ class WSClient:
             fail("CDP WebSocket must be local ws://")
         self.sock = socket.create_connection((p.hostname, p.port or 80), timeout=timeout)
         self.sock.settimeout(timeout)
+        self._recv_buffer = bytearray()
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         path = p.path or "/"
         if p.query:
@@ -168,7 +169,8 @@ class WSClient:
             pass
 
     def _recv_exact(self, n: int) -> bytes:
-        out = bytearray()
+        out = bytearray(self._recv_buffer[:n])
+        del self._recv_buffer[:n]
         while len(out) < n:
             chunk = self.sock.recv(n - len(out))
             if not chunk:
@@ -185,7 +187,10 @@ class WSClient:
             out.extend(chunk)
             if len(out) > limit:
                 raise ValueError("handshake too large")
-        return bytes(out)
+        end = out.index(marker) + len(marker)
+        # TCP can coalesce the HTTP upgrade with all or part of the first frame.
+        self._recv_buffer.extend(out[end:])
+        return bytes(out[:end])
 
     def _send_frame(self, payload: bytes, opcode: int = 1) -> None:
         first = 0x80 | (opcode & 0x0F)
