@@ -34,6 +34,12 @@ process-list leakage. Optional `--import-partial` and `--sha256` arguments do
 not contain secrets. Installing the package is optional; all commands above
 work directly from source without `pip install`.
 
+If you separately install the package, `chatgpt-export-recovery-cli --output
+/your/private/folder/export.zip` selects terminal mode automatically; it does
+not require another `--cli` flag or import Tk. The GUI command remains
+`chatgpt-export-recovery`. Both terminal forms keep the same hidden-prompt and
+non-interactive-input restrictions.
+
 ## From any browser
 
 1. Request the export in your normal ChatGPT session. Open the export email or

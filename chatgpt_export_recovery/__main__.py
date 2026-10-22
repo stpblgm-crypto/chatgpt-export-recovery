@@ -54,5 +54,11 @@ def main(argv=None):
     return 0
 
 
+def cli_main(argv=None):
+    """Console-script entry point: terminal mode without requiring --cli."""
+    arguments = sys.argv[1:] if argv is None else argv
+    return main(["--cli", *arguments])
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

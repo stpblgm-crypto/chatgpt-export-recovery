@@ -15,7 +15,7 @@ dependencies = []
 chatgpt-export-recovery = "chatgpt_export_recovery.__main__:main"
 
 [project.scripts]
-chatgpt-export-recovery-cli = "chatgpt_export_recovery.__main__:main"
+chatgpt-export-recovery-cli = "chatgpt_export_recovery.__main__:cli_main"
 
 [tool.setuptools]
 packages = ["chatgpt_export_recovery"]
