@@ -1,18 +1,48 @@
 # ChatGPT Export Recovery
 
-Resumable, verified recovery downloader for large ChatGPT data export ZIP
-archives on Linux.
+A Python desktop app for resumable, verified ChatGPT export ZIP downloads,
+with a preserved Linux/Firefox shell implementation.
 
 > Unofficial utility. Not affiliated with or endorsed by OpenAI.
 
-Large browser downloads can stop before the complete archive reaches disk. This
-tool reuses an authenticated local Firefox session, downloads bounded HTTP Range
-segments, validates every response before append, and resumes from the exact
-size of the durable `.part` checkpoint.
+## Python desktop app (0.2.0 candidate)
 
-The verified real-world baseline is Linux with Firefox Snap and 128 MiB
-segments. The modular entrypoint is structured so browser providers can be
-added without changing the download engine.
+Windows, Linux, and macOS source targets, with a native Tk interface and no
+third-party runtime dependencies. Start from the repository folder:
+
+```text
+python -m chatgpt_export_recovery
+```
+
+Use `py` on Windows or `python3` on macOS/Linux as appropriate. Python 3.10+
+with Tk is required. Paste a direct HTTPS export download link from **any
+browser**, select a new ZIP output, and Start / resume. Optional browser
+partial import preserves the original. Pause, bounded retries, checkpoint
+hash verification, remote ETag checks, ZIP CRC, SHA256, and no-overwrite
+publication are built in. The UI stays responsive while a worker downloads.
+
+The server must support standalone HTTPS Range requests with a strong ETag.
+The app does not read browser cookies, decrypt profiles, or automate login.
+A session-only export endpoint is not supported by the universal link mode.
+Browser partial import re-fetches the prefix to verify it; normal app resume
+uses its verified checkpoint without re-downloading committed bytes.
+
+[Launch, browser compatibility, privacy, storage, and acceptance guide](docs/DESKTOP_APP.md)
+
+- Python download/controller tests: synthetic local coverage
+- Native Windows/macOS GUI acceptance: pending
+- Linux graphical acceptance: pending (headless development environment)
+- Real export in the new desktop app: not yet tested
+- Native installers and signed binaries: not included
+
+## Preserved Linux / Firefox CLI
+
+The existing shell tool reuses an authenticated local Firefox session,
+downloads bounded HTTP Range segments, validates every response before append,
+and resumes from the exact size of its durable `.part` checkpoint. Its verified
+real-world baseline is Linux with Firefox Snap and 128 MiB segments.
+The sections below describe that original shell implementation, not the new
+Python GUI. The experimental Chromium CDP draft is a separate workstream.
 
 ## Safety first
 
@@ -76,7 +106,7 @@ start. A valid final ZIP exits immediately. An invalid final file becomes the
 checkpoint only when no checkpoint already exists; otherwise it is preserved
 under a no-overwrite timestamped name.
 
-## Support matrix
+## Legacy shell support matrix
 
 | Capability | State |
 |---|---|
@@ -98,7 +128,13 @@ has not yet received a second live export run.
 
 ## Tests
 
-No ChatGPT account or network access is required:
+Python desktop engine/controller (all platforms, standard library only):
+
+```text
+python -m unittest discover -s tests -p "test_python_*.py" -v
+```
+
+Legacy shell suite (Linux). No ChatGPT account or network access is required:
 
 ```bash
 ./tests/run.sh
@@ -124,7 +160,9 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 
 ## Repository layout
 
-- `src/chatgpt-export-recover` — current CLI
+- `chatgpt_export_recovery/` — Python desktop app, engine, controller and CLI
+- `launch.pyw` — desktop launch helper
+- `src/chatgpt-export-recover` — legacy Linux CLI
 - `src/browsers/firefox.sh` — Firefox session provider
 - `src/lib/download.sh` — browser-independent Range/checkpoint engine
 - `legacy/` — sanitized archival baseline; not the primary interface
@@ -133,8 +171,9 @@ Firefox cookie database to prove that diagnostics do not expose cookie values.
 
 ## Limitations and roadmap
 
-This release is Linux-only and has no GUI, extension, login automation,
-telemetry, scheduled export, or external SaaS dependency. Chromium-family
+The preserved shell implementation is Linux-only. The new Python GUI targets
+Windows, Linux, and macOS using direct links. Neither has an extension, login
+automation, telemetry, scheduled export, or external SaaS dependency. Chromium-family
 support requires an OS-keyring-aware provider; browser encryption will not be
 bypassed. See [the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
 

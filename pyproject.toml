@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatgpt-export-recovery"
+version = "0.2.0"
+description = "A native Python GUI for resumable, verified export ZIP downloads"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = []
+
+[project.gui-scripts]
+chatgpt-export-recovery = "chatgpt_export_recovery.__main__:main"
+
+[project.scripts]
+chatgpt-export-recovery-cli = "chatgpt_export_recovery.__main__:cli_main"
+
+[tool.setuptools]
+packages = ["chatgpt_export_recovery"]

@@ -52,3 +52,23 @@ open files; this tool does not defend against a compromised local account.
 cookie jars, headers, sessions, logs, and environment files. Before publication,
 the staged tree must be searched for signed-URL shapes and known source-only
 markers, then checked with an installed secret scanner when available.
+
+
+## Python desktop path (0.2.0 candidate)
+
+The desktop application never reads browser stores or cookie jars. HTTPS is
+certificate-verified; redirects cannot downgrade the scheme or inject URL
+userinfo. All network errors are rendered with constant safe messages instead
+of exception URLs, response bodies, or headers. Signed links remain in memory.
+
+Remote bytes require exact 206/range/length/total and a strong ETag. Resume
+state binds the committed prefix hash, size, ETag digest, and source host/path
+digest. Fresh query signatures can identify the same object, provided the
+server honors strong ETag semantics for that resource. A user-supplied trusted
+SHA256 is the independent whole-file verification option.
+
+Private `.recovery` folders and POSIX mode-0600 payload files contain export
+data. Windows ACLs follow the selected folder. No overwrite, extraction,
+telemetry, browser profile access, or automatic cleanup of user files occurs.
+See [the desktop storage/security guide](DESKTOP_APP.md) for hard-link
+publication, checkpoint crash behavior, platform limitations, and proxy use.
