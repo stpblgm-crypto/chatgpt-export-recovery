@@ -6,13 +6,15 @@ set -o pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib/download.sh
 source "$SCRIPT_DIR/lib/download.sh"
+# shellcheck source=lib/download_cdp.sh
+source "$SCRIPT_DIR/lib/download_cdp.sh"
 # shellcheck source=browsers/firefox.sh
 source "$SCRIPT_DIR/browsers/firefox.sh"
 
 usage() {
     cat <<'USAGE'
 Usage:
-  chatgpt-export-recover --output FILE [--browser auto|firefox] [URL source]
+  chatgpt-export-recover --output FILE [--browser auto|firefox|chromium-cdp] [URL source]
 
 URL sources (choose at most one):
   --url URL          Explicit signed export URL. This may be visible in shell
@@ -21,15 +23,20 @@ URL sources (choose at most one):
   CHATGPT_EXPORT_URL Read the URL from the environment.
 
 If no URL source is supplied and stdin is a terminal, the program prompts for
-the URL without echoing it.
+it without echoing it.
 
 Options:
   --output FILE            Final ZIP path (required).
-  --browser NAME           auto (default) or firefox.
-  --chunk-size BYTES       Base segment size (default: 134217728 / 128 MiB).
-  --min-chunk-size BYTES   Retry floor (default: 16777216 / 16 MiB).
+  --browser NAME           auto (default), firefox, or chromium-cdp.
+  --chunk-size BYTES       Base segment size. Firefox default: 128 MiB;
+                           chromium-cdp default: 8 MiB.
+  --min-chunk-size BYTES   Retry floor. Firefox default: 16 MiB;
+                           chromium-cdp default: 1 MiB.
   -h, --help               Show this help.
 
+chromium-cdp uses an already-running local Chromium-family browser through a
+local DevTools endpoint. It never reads/decrypts/prints browser cookie values.
+If the browser does not expose a local CDP endpoint, the provider fails closed.
 The signed URL and cookie values are never printed by this program.
 USAGE
 }
@@ -43,8 +50,8 @@ url_argument=""
 url_file=""
 output_file=""
 browser="auto"
-chunk_size=134217728
-minimum_chunk_size=16777216
+chunk_size=""
+minimum_chunk_size=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -134,16 +141,19 @@ case "$browser" in
         if firefox_detect_browser; then
             browser="firefox"
         else
-            die "no supported browser profile was detected"
+            die "no auto-detected supported browser; use --browser chromium-cdp explicitly for a CDP-enabled Chromium session"
         fi
         ;;
-    firefox) ;;
+    firefox|chromium-cdp) ;;
     *) die "browser provider is not implemented: $browser" ;;
 esac
 
-for required_command in curl python3 stat sha256sum; do
+for required_command in python3 stat sha256sum; do
     command -v "$required_command" >/dev/null 2>&1 || die "$required_command is required"
 done
+if [ "$browser" = "firefox" ]; then
+    command -v curl >/dev/null 2>&1 || die "curl is required for Firefox transport"
+fi
 
 runtime_base="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 [ -d "$runtime_base" ] && [ -w "$runtime_base" ] || runtime_base="/tmp"
@@ -151,7 +161,13 @@ work_dir="$(mktemp -d "$runtime_base/chatgpt-export-recovery.XXXXXX")" || die "c
 chmod 700 "$work_dir"
 
 cleanup() {
-    firefox_cleanup_session_material "$work_dir" >/dev/null 2>&1 || true
+    if [ "$browser" = "firefox" ]; then
+        firefox_cleanup_session_material "$work_dir" >/dev/null 2>&1 || true
+    else
+        case "$work_dir" in
+            */chatgpt-export-recovery.*) rm -rf -- "$work_dir" ;;
+        esac
+    fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -165,42 +181,79 @@ umask 077
 printf 'ChatGPT Export Recovery\n'
 printf '  browser=%s\n' "$browser"
 printf '  output=%s\n' "$output_file"
-printf 'Discovering a live Firefox session without printing cookie values...\n'
 
-if ! firefox_build_temporary_cookie_jar "$cookie_jar" "$cookie_meta" "$work_dir"; then
-    die "Firefox session discovery failed"
-fi
+transport=""
+transport_helper=""
+user_agent=""
 
-profile=""
-source_kind=""
-snapshot_method=""
-cookie_count=""
-chatgpt_cookie_count=""
-partitioned=""
-while IFS='=' read -r key value; do
-    case "$key" in
-        profile) profile="$value" ;;
-        source) source_kind="$value" ;;
-        snapshot_method) snapshot_method="$value" ;;
-        cookies) cookie_count="$value" ;;
-        chatgpt_cookies) chatgpt_cookie_count="$value" ;;
-        origin_partitioned) partitioned="$value" ;;
-    esac
-done < "$cookie_meta"
+case "$browser" in
+    firefox)
+        [ -n "$chunk_size" ] || chunk_size=134217728
+        [ -n "$minimum_chunk_size" ] || minimum_chunk_size=16777216
+        printf 'Discovering a live Firefox session without printing cookie values...\n'
+        if ! firefox_build_temporary_cookie_jar "$cookie_jar" "$cookie_meta" "$work_dir"; then
+            die "Firefox session discovery failed"
+        fi
 
-printf '  selected_profile=%s\n' "$profile"
-printf '  discovery=%s snapshot=%s\n' "$source_kind" "$snapshot_method"
-printf '  selected_cookies=%s chatgpt_cookies=%s partitioned=%s\n' \
-    "$cookie_count" "$chatgpt_cookie_count" "$partitioned"
-printf '  cookie_values=WITHHELD; temporary_material=mode-0600\n'
+        profile=""
+        source_kind=""
+        snapshot_method=""
+        cookie_count=""
+        chatgpt_cookie_count=""
+        partitioned=""
+        while IFS='=' read -r key value; do
+            case "$key" in
+                profile) profile="$value" ;;
+                source) source_kind="$value" ;;
+                snapshot_method) snapshot_method="$value" ;;
+                cookies) cookie_count="$value" ;;
+                chatgpt_cookies) chatgpt_cookie_count="$value" ;;
+                origin_partitioned) partitioned="$value" ;;
+            esac
+        done < "$cookie_meta"
 
-user_agent="$(firefox_user_agent)"
-download_recover \
-    "$export_url" \
-    "$output_file" \
-    "$cookie_jar" \
-    "$user_agent" \
-    "$work_dir" \
-    "$chunk_size" \
-    "$minimum_chunk_size"
-exit $?
+        printf '  selected_profile=%s\n' "$profile"
+        printf '  discovery=%s snapshot=%s\n' "$source_kind" "$snapshot_method"
+        printf '  selected_cookies=%s chatgpt_cookies=%s partitioned=%s\n' \
+            "$cookie_count" "$chatgpt_cookie_count" "$partitioned"
+        printf '  cookie_values=WITHHELD; temporary_material=mode-0600\n'
+        user_agent="$(firefox_user_agent)"
+        transport="curl-cookie"
+        ;;
+    chromium-cdp)
+        [ -n "$chunk_size" ] || chunk_size=8388608
+        [ -n "$minimum_chunk_size" ] || minimum_chunk_size=1048576
+        transport="chromium-cdp"
+        transport_helper="$SCRIPT_DIR/browsers/chromium_cdp_fetch.py"
+        [ -x "$transport_helper" ] || die "Chromium CDP helper is missing or not executable"
+        printf 'Using browser-native Chromium CDP transport.\n'
+        printf '  cookie_export=NO; cookie_database_reads=NO\n'
+        printf '  cdp_endpoint=auto-discover-local-or-CHATGPT_RECOVERY_CDP_ENDPOINT\n'
+        : > "$cookie_jar"
+        chmod 600 "$cookie_jar"
+        ;;
+esac
+
+case "$browser" in
+    firefox)
+        download_recover \
+            "$export_url" \
+            "$output_file" \
+            "$cookie_jar" \
+            "$user_agent" \
+            "$work_dir" \
+            "$chunk_size" \
+            "$minimum_chunk_size"
+        exit $?
+        ;;
+    chromium-cdp)
+        download_recover_cdp \
+            "$export_url" \
+            "$output_file" \
+            "$work_dir" \
+            "$transport_helper" \
+            "$chunk_size" \
+            "$minimum_chunk_size"
+        exit $?
+        ;;
+esac
