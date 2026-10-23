@@ -1,9 +1,11 @@
 """Deterministic TCP framing regressions; no sockets, browser or URL file."""
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 HELPER = Path(__file__).resolve().parents[1] / 'src/browsers/chromium_cdp_fetch.py'
@@ -90,6 +92,104 @@ class WebSocketBufferTests(unittest.TestCase):
                                    frame({'id': 1, 'result': {'ack': True}})])
         self.assertEqual(client.call('Network.enable'), {'ack': True})
         self.assertTrue(any(message[0] & 0x0f == 10 for message in sock.sent[1:]))
+
+
+class WebSocketConstructionCleanupTests(unittest.TestCase):
+    """Constructor failures own their fake socket; no real I/O is possible."""
+    def setUp(self):
+        self.stack = contextlib.ExitStack()
+        self.addCleanup(self.stack.close)
+        for name in ('socket', 'getaddrinfo'):
+            self.stack.enter_context(patch.object(
+                SUBJECT.socket, name, side_effect=AssertionError('real network forbidden')))
+        self.sock = Mock()
+        self.sock.recv.return_value = UPGRADE
+        self.connect = self.stack.enter_context(patch.object(
+            SUBJECT.socket, 'create_connection', return_value=self.sock))
+        self.stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+
+    def construct(self):
+        return SUBJECT.WSClient('ws://127.0.0.1:9222/owned-fake', timeout=3.0)
+
+    def fails_and_closes(self, error):
+        with self.assertRaises(type(error)) as caught:
+            self.construct()
+        self.assertIs(caught.exception, error)
+        self.sock.close.assert_called_once_with()
+
+    def test_timeout_setup_failure_closes_socket(self):
+        error = OSError('mock timeout setup')
+        self.sock.settimeout.side_effect = error
+        self.fails_and_closes(error)
+        self.sock.sendall.assert_not_called()
+
+    def test_handshake_send_failure_closes_socket(self):
+        error = OSError('mock send')
+        self.sock.sendall.side_effect = error
+        self.fails_and_closes(error)
+        self.sock.recv.assert_not_called()
+
+    def test_handshake_read_timeout_closes_socket(self):
+        error = TimeoutError('mock recv')
+        self.sock.recv.side_effect = error
+        self.fails_and_closes(error)
+
+    def test_handshake_eof_closes_socket(self):
+        self.sock.recv.return_value = b''
+        with self.assertRaisesRegex(EOFError, 'connection closed'):
+            self.construct()
+        self.sock.close.assert_called_once_with()
+
+    def test_oversized_handshake_closes_socket(self):
+        self.sock.recv.return_value = b'X' * 4096
+        with self.assertRaisesRegex(ValueError, 'handshake too large'):
+            self.construct()
+        self.sock.close.assert_called_once_with()
+
+    def test_rejected_handshake_closes_without_sending_close_frame(self):
+        self.sock.recv.return_value = b'HTTP/1.1 403 Forbidden\r\n\r\n'
+        with self.assertRaises(SystemExit) as caught:
+            self.construct()
+        self.assertEqual(caught.exception.code, 2)
+        self.sock.close.assert_called_once_with()
+        self.assertEqual(self.sock.sendall.call_count, 1)
+
+    def test_interrupted_handshake_closes_and_preserves_interrupt(self):
+        error = KeyboardInterrupt('mock interrupt')
+        self.sock.recv.side_effect = error
+        self.fails_and_closes(error)
+
+    def test_cleanup_failure_does_not_replace_original_error(self):
+        for cleanup_error in (OSError('mock close'), KeyboardInterrupt('mock close interrupt')):
+            with self.subTest(cleanup_error=type(cleanup_error).__name__):
+                self.sock.reset_mock()
+                original = EOFError('original handshake failure')
+                self.sock.recv.side_effect = original
+                self.sock.close.side_effect = cleanup_error
+                self.fails_and_closes(original)
+
+    def test_connection_failure_does_not_attempt_close(self):
+        error = OSError('mock connect')
+        self.connect.side_effect = error
+        with self.assertRaises(OSError) as caught:
+            self.construct()
+        self.assertIs(caught.exception, error)
+        self.sock.close.assert_not_called()
+
+    def test_success_keeps_socket_open_with_unchanged_request_and_buffer(self):
+        self.sock.recv.return_value = UPGRADE + b'AB'
+        client = self.construct()
+        self.sock.close.assert_not_called()
+        self.connect.assert_called_once_with(('127.0.0.1', 9222), timeout=3.0)
+        self.sock.settimeout.assert_called_once_with(3.0)
+        self.assertEqual(client._next_id, 1)
+        self.assertEqual(client._recv_exact(2), b'AB')
+        self.assertEqual(self.sock.recv.call_count, 1)
+        request = self.sock.sendall.call_args.args[0]
+        self.assertTrue(request.startswith(b'GET /owned-fake HTTP/1.1\r\n'))
+        self.assertIn(b'Host: 127.0.0.1:9222\r\n', request)
+        client.close()
+        self.sock.close.assert_called_once_with()
 
 
 if __name__ == '__main__':

@@ -168,26 +168,36 @@ class WSClient:
         if p.scheme != "ws" or p.hostname not in ("127.0.0.1", "localhost", "::1"):
             fail("CDP WebSocket must be local ws://")
         self.sock = socket.create_connection((p.hostname, p.port or 80), timeout=timeout)
-        self.sock.settimeout(timeout)
-        self._recv_buffer = bytearray()
-        key = base64.b64encode(os.urandom(16)).decode("ascii")
-        path = p.path or "/"
-        if p.query:
-            path += "?" + p.query
-        request = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {p.hostname}:{p.port or 80}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
-        )
-        self.sock.sendall(request.encode("ascii"))
-        response = self._recv_until(b"\r\n\r\n", 65536)
-        status = response.split(b"\r\n", 1)[0]
-        if b" 101 " not in status:
-            fail("CDP WebSocket handshake failed")
-        self._next_id = 1
+        try:
+            self.sock.settimeout(timeout)
+            self._recv_buffer = bytearray()
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+            path = p.path or "/"
+            if p.query:
+                path += "?" + p.query
+            request = (
+                f"GET {path} HTTP/1.1\r\n"
+                f"Host: {p.hostname}:{p.port or 80}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            self.sock.sendall(request.encode("ascii"))
+            response = self._recv_until(b"\r\n\r\n", 65536)
+            status = response.split(b"\r\n", 1)[0]
+            if b" 101 " not in status:
+                fail("CDP WebSocket handshake failed")
+            self._next_id = 1
+        except BaseException:
+            # Construction failed before the caller could own cleanup. Do not
+            # send a WebSocket close frame when the upgrade may be incomplete.
+            try:
+                self.sock.close()
+            except BaseException:
+                # Cleanup must not replace the original error or interruption.
+                pass
+            raise
 
     def close(self) -> None:
         try:
