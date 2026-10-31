@@ -6,12 +6,36 @@ import os
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "src/browsers/chromium_cdp_fetch.py"
+
+# This smoke owns exactly one ephemeral endpoint. If it fails, the test must
+# stop there instead of probing browser processes, profiles or default ports.
+HELPER_DRIVER = '''
+import importlib.util, os, sys, urllib.parse
+spec = importlib.util.spec_from_file_location("owned_cdp_smoke", sys.argv[1])
+subject = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(subject)
+endpoint = subject.local_cdp_endpoint(os.environ["CHATGPT_RECOVERY_CDP_ENDPOINT"])
+port = urllib.parse.urlsplit(endpoint).port
+def audit(event, args):
+    if event in ("socket.connect", "socket.bind"):
+        if event != "socket.connect" or args[1] != ("127.0.0.1", port):
+            raise RuntimeError("smoke may connect only to its owned endpoint")
+    if event == "socket.getaddrinfo" and (args[0], args[1]) != ("127.0.0.1", port):
+        raise RuntimeError("smoke forbids other DNS or ports")
+    if event == "open" and isinstance(args[0], str) and args[0].startswith("/proc/"):
+        raise RuntimeError("smoke forbids browser process/profile discovery")
+sys.addaudithook(audit)
+subject.candidate_endpoints = lambda: iter((endpoint,))
+sys.argv = sys.argv[1:]
+raise SystemExit(subject.main())
+'''
 
 
 def recv_exact(sock, n):
@@ -53,20 +77,28 @@ def send_text(sock, obj):
 
 class FakeCDP:
     def __init__(self):
+        self.stopped = threading.Event()
+        self.handlers = []
         self.sock = socket.socket()
         self.sock.bind(("127.0.0.1", 0))
         self.sock.listen(4)
+        self.sock.settimeout(0.1)
         self.port = self.sock.getsockname()[1]
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
 
     def run(self):
-        while True:
+        while not self.stopped.is_set():
             try:
                 conn, _ = self.sock.accept()
+            except socket.timeout:
+                continue
             except OSError:
                 return
-            threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
+            conn.settimeout(2)
+            handler = threading.Thread(target=self.handle, args=(conn,), daemon=True)
+            self.handlers.append(handler)
+            handler.start()
 
     def handle(self, conn):
         try:
@@ -132,7 +164,13 @@ class FakeCDP:
             conn.close()
 
     def close(self):
+        self.stopped.set()
         self.sock.close()
+        self.thread.join(3)
+        for handler in self.handlers:
+            handler.join(3)
+        if self.thread.is_alive() or any(h.is_alive() for h in self.handlers):
+            raise AssertionError("synthetic CDP listener/handler did not retire")
 
 
 def main():
@@ -148,7 +186,8 @@ def main():
             env = os.environ.copy()
             env["CHATGPT_RECOVERY_CDP_ENDPOINT"] = f"http://127.0.0.1:{fake.port}"
             r = subprocess.run([
-                str(HELPER), "--url-file", str(secret), "--start", "4", "--end", "7",
+                sys.executable, "-c", HELPER_DRIVER, str(HELPER),
+                "--url-file", str(secret), "--start", "4", "--end", "7",
                 "--output", str(out), "--headers", str(headers)
             ], env=env, text=True, capture_output=True, timeout=10)
             if r.returncode != 0:
