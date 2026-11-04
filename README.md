@@ -41,9 +41,11 @@ explicit option.
 
 - Python download/controller tests: synthetic local coverage
 - Native Windows/macOS GUI acceptance: pending
-- Linux graphical acceptance: pending (headless development environment)
-- Real export in the new desktop app: not yet tested
+- Linux native Tk GUI acceptance: pending
+- Linux recovery engine with local Firefox authentication: real export verified
 - Native installers and signed binaries: not included
+
+[Linux live-recovery acceptance and remaining scope](docs/LINUX_RECOVERY_ACCEPTANCE.md)
 
 ## Preserved Linux / Firefox CLI
 

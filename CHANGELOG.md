@@ -13,8 +13,9 @@
   ETag, partial verification, and final integrity checks. Add session isolation,
   redirect, read-only WAL, privacy, cleanup, and CLI tests.
 - Authenticated Chrome profile recovery remains unimplemented. A stopped Chrome
-  partial can use the selected Firefox session. Full-download acceptance remains
-  pending.
+  partial can use the selected Firefox session. The Linux recovery engine passed
+  owner-authorized full-export size, SHA256, and ZIP CRC verification; native Tk
+  GUI and Windows/macOS acceptance remain pending.
 - Expose a bounded CLI segment size of 8, 16, 32, or 64 MiB without changing the
   default or the recovery engine's validation.
 

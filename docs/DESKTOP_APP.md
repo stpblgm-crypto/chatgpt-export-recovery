@@ -3,7 +3,9 @@
 This is a source-distributed Python/Tk desktop application for Windows, Linux,
 and macOS. Python 3.10+ and Tk are required; no third-party runtime packages,
 browser extension, remote-debugging port, or account integration is required.
-It has not yet been accepted on native Windows/macOS desktops or a live export.
+The Linux recovery engine and local Firefox session transport have passed an
+owner-authorized live export recovery. Native Tk GUI and Windows/macOS desktop
+acceptance remain pending. See [Linux acceptance](LINUX_RECOVERY_ACCEPTANCE.md).
 
 ## Launch
 
