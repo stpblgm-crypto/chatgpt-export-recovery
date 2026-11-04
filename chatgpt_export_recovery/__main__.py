@@ -18,9 +18,14 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="New output ZIP path (CLI only)")
     parser.add_argument("--import-partial", type=Path, help="Read and verify a stopped browser partial (CLI only)")
     parser.add_argument("--sha256", default="", help="Optional trusted expected SHA256 (CLI only)")
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument("--url-from-clipboard", action="store_true",
+                        help="Read a direct HTTPS link once from the local desktop clipboard (CLI only; Tk required)")
+    inputs.add_argument("--url-from-browser", action="store_true",
+                        help="Accept one direct HTTPS link through a localhost-only browser form (CLI only)")
     args = parser.parse_args(argv)
     if not args.cli:
-        if args.output or args.import_partial or args.sha256:
+        if args.output or args.import_partial or args.sha256 or args.url_from_clipboard or args.url_from_browser:
             parser.error("Use --cli with download options; configure GUI downloads in the window.")
         try:
             from .gui import main as gui_main
@@ -30,14 +35,21 @@ def main(argv=None):
         return gui_main()
     if not args.output:
         parser.error("--cli requires --output")
-    if not sys.stdin.isatty():
+    if not (args.url_from_clipboard or args.url_from_browser) and not sys.stdin.isatty():
         print("Use an interactive terminal for the hidden URL prompt. URL command-line arguments are intentionally unsupported.", file=sys.stderr)
         return 2
     cancel = threading.Event()
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", getpass.GetPassWarning)
-            url = getpass.getpass("Direct HTTPS download link (hidden): ").strip()
+        if args.url_from_browser:
+            from .local_input import read_browser_url
+            url = read_browser_url()
+        elif args.url_from_clipboard:
+            from .clipboard import read_clipboard_url
+            url = read_clipboard_url()
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", getpass.GetPassWarning)
+                url = getpass.getpass("Direct HTTPS download link (hidden): ").strip()
         result = Downloader(Config(url, args.output, args.import_partial, args.sha256), cancel=cancel,
                             progress=lambda event: print(f"{event.phase}: {event.completed}/{event.total} {event.message}")).run()
     except getpass.GetPassWarning:

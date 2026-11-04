@@ -27,6 +27,11 @@ A session-only export endpoint is not supported by the universal link mode.
 Browser partial import re-fetches the prefix to verify it; normal app resume
 uses its verified checkpoint without re-downloading committed bytes.
 
+The terminal interface also supports explicit `--url-from-clipboard` and
+`--url-from-browser` inputs. The browser option receives one masked link through
+a one-time loopback form on the same computer. These options hand off a direct
+link; they do not import Chrome cookies or add session authentication.
+
 [Launch, browser compatibility, privacy, storage, and acceptance guide](docs/DESKTOP_APP.md)
 
 - Python download/controller tests: synthetic local coverage
@@ -182,3 +187,4 @@ bypassed. See [the browser roadmap](docs/BROWSER_SUPPORT_ROADMAP.md).
 [MIT](LICENSE). The repository consists of the supplied original baseline and
 the original bootstrap/refactor code; no third-party source fragments are
 included.
+

@@ -6,7 +6,7 @@ Treat a ChatGPT export signed URL, browser cookies, browser profile databases,
 and the downloaded export itself as sensitive. Do not attach them to an issue,
 commit them, or paste them into logs.
 
-The program takes a private snapshot of the selected Firefox cookie database,
+The preserved Linux/Firefox shell program takes a private snapshot of the selected Firefox cookie database,
 writes only ChatGPT/OpenAI cookies to a mode-0600 temporary jar, and removes the
 runtime directory on normal exit and handled signals. Cookie values and the
 signed URL are deliberately excluded from diagnostics.
@@ -14,6 +14,25 @@ signed URL are deliberately excluded from diagnostics.
 For the least shell exposure, omit `--url` and use the hidden interactive
 prompt. Command-line arguments may be retained by shell history or visible in
 process listings.
+
+## Python local link input
+
+The Python app uses standalone HTTPS links without reading browser profiles or
+cookies. Its default terminal prompt is hidden. Explicit clipboard input reads
+once without modifying the clipboard; clipboard managers may retain data under
+their own settings.
+
+The optional browser input binds only to `127.0.0.1` on a random port. It uses a
+random one-time path, an independent session code, exact Host and Origin checks,
+a masked field, bounded requests, and a five-minute timeout. It serves no files,
+does not log requests or export links, and keeps the submitted link in memory.
+Check that the displayed computer and session code match the terminal before
+pasting. This protects against unrelated web origins, not software running as
+the same local user. A private destination directory is still required.
+
+Neither input mode bypasses login, anti-bot challenges, encryption, or server
+Range restrictions. HTTP 401/403 and non-206 responses leave verified bytes
+unchanged. Never commit runtime checkpoints, input links, cookies, or exports.
 
 ## Reporting a vulnerability
 
@@ -26,3 +45,4 @@ minimal synthetic reproducer.
 
 Security fixes are applied to the current default branch. The archival script
 under `legacy/` exists only for provenance and is not the recommended entrypoint.
+

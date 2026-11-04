@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-11-04
+
+- Add explicit local clipboard and one-time loopback browser form inputs to the
+  Python CLI, keeping the hidden prompt as the default.
+- Keep direct links out of command arguments and logs; guard the form with a
+  random path, strict Host/Origin checks, bounded input, and a short lifetime.
+- Add synthetic tests for privacy, request rejection, lifecycle, and CLI input
+  selection. The Range/checkpoint engine and Firefox shell baseline are unchanged.
+- These modes accept direct file links; authenticated Chrome session recovery
+  remains unimplemented. Native full-download acceptance remains pending.
+
 ## 0.2.0 candidate — 2026-10-19
 
 - Add a standard-library Python/Tk desktop app targeting Windows/Linux/macOS.
@@ -25,3 +36,4 @@ All notable changes to this project are documented here.
   verification, and final SHA256 output.
 - Add offline tests for shell syntax, Range validation, resume append behavior,
   cookie filtering, and secret-free diagnostics.
+
