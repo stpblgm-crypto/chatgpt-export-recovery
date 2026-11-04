@@ -3,7 +3,9 @@
 This is a source-distributed Python/Tk desktop application for Windows, Linux,
 and macOS. Python 3.10+ and Tk are required; no third-party runtime packages,
 browser extension, remote-debugging port, or account integration is required.
-It has not yet been accepted on native Windows/macOS desktops or a live export.
+The Linux recovery engine and local Firefox session transport have passed an
+owner-authorized live export recovery. Native Tk GUI and Windows/macOS desktop
+acceptance remain pending. See [Linux acceptance](LINUX_RECOVERY_ACCEPTANCE.md).
 
 ## Launch
 
@@ -34,11 +36,65 @@ process-list leakage. Optional `--import-partial` and `--sha256` arguments do
 not contain secrets. Installing the package is optional; all commands above
 work directly from source without `pip install`.
 
+For an explicit local clipboard input, copy the actual HTTPS file link in
+Chrome or another browser, then run:
+
+```text
+python -m chatgpt_export_recovery --cli --url-from-clipboard --output /your/private/folder/export.zip --import-partial /path/to/stopped.crdownload
+```
+
+This mode reads the desktop clipboard once and leaves its contents unchanged.
+It requires Tk and a graphical desktop session. The link is validated locally
+and is never echoed or included in process arguments. The same standalone
+HTTPS, Range, and strong ETag requirements apply.
+
+For a one-time browser form on the same computer, use `--url-from-browser`
+instead of `--url-from-clipboard`. Open the printed local address in Chrome or
+another browser, check the displayed computer and local session code, and paste
+the actual HTTPS file link into the masked field. The listener binds only to
+`127.0.0.1`, accepts one input, and closes after acceptance or a five-minute
+timeout. It never serves files or logs the export link. This mode needs no Tk
+or system clipboard access; its HTTP traffic stays on the local computer.
+
 If you separately install the package, `chatgpt-export-recovery-cli --output
 /your/private/folder/export.zip` selects terminal mode automatically; it does
 not require another `--cli` flag or import Tk. The GUI command remains
-`chatgpt-export-recovery`. Both terminal forms keep the same hidden-prompt and
-non-interactive-input restrictions.
+`chatgpt-export-recovery`. Both terminal entry points default to a hidden prompt
+that requires a TTY. The explicit clipboard and browser input modes work without
+a TTY. Browser authentication requires the separate explicit option below.
+
+## Existing Linux Firefox session
+
+When the export endpoint requires authentication, the CLI can use an existing
+Firefox profile on the same Linux computer:
+
+```text
+python -m chatgpt_export_recovery --cli --url-from-browser --firefox-profile /path/to/firefox/profile --chunk-mib 64 --output /your/private/folder/export.zip --import-partial /path/to/stopped.crdownload
+```
+
+Use the profile already signed in to the account that owns the export. The
+program does not sign in, request an export, or modify Firefox. It reads only
+unexpired, unpartitioned, first-party ChatGPT cookies using a read-only SQLite
+transaction. It creates no cookie database snapshot or cookie file; credentials
+remain in memory and are cleared when the transport closes. Containers and
+other partitions are not flattened into the selected session.
+
+Cookies are sent only to HTTPS `chatgpt.com` on the standard port, with their
+original domain, path, and expiry scope. Redirected storage hosts receive no
+Firefox cookies. Server response cookies are not saved or adopted. The browser
+version metadata must be readable in the selected profile. Unsupported or
+unavailable sessions fail closed; sign in normally in Firefox if required.
+
+Range validation, strong ETags, full prefix comparison, checkpoint hashes,
+SHA256, ZIP CRC, and no-overwrite publication remain mandatory. Stop the original
+browser download before importing its partial. This option supports Linux
+Firefox authentication, including for a stopped Chrome payload; it does not
+implement Chrome cookie decryption or bypass login or anti-bot challenges.
+
+The optional `--chunk-mib` accepts 8, 16, 32, or 64 MiB; the default remains 8.
+Larger segments reduce request overhead on large exports and need more memory.
+Changing this setting when resuming does not change checkpoint identity or
+integrity checks. A failed current segment is retried without committing it.
 
 ## From any browser
 
