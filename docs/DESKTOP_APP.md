@@ -59,7 +59,40 @@ If you separately install the package, `chatgpt-export-recovery-cli --output
 not require another `--cli` flag or import Tk. The GUI command remains
 `chatgpt-export-recovery`. Both terminal entry points default to a hidden prompt
 that requires a TTY. The explicit clipboard and browser input modes work without
-a TTY and do not add browser session authentication.
+a TTY. Browser authentication requires the separate explicit option below.
+
+## Existing Linux Firefox session
+
+When the export endpoint requires authentication, the CLI can use an existing
+Firefox profile on the same Linux computer:
+
+```text
+python -m chatgpt_export_recovery --cli --url-from-browser --firefox-profile /path/to/firefox/profile --chunk-mib 64 --output /your/private/folder/export.zip --import-partial /path/to/stopped.crdownload
+```
+
+Use the profile already signed in to the account that owns the export. The
+program does not sign in, request an export, or modify Firefox. It reads only
+unexpired, unpartitioned, first-party ChatGPT cookies using a read-only SQLite
+transaction. It creates no cookie database snapshot or cookie file; credentials
+remain in memory and are cleared when the transport closes. Containers and
+other partitions are not flattened into the selected session.
+
+Cookies are sent only to HTTPS `chatgpt.com` on the standard port, with their
+original domain, path, and expiry scope. Redirected storage hosts receive no
+Firefox cookies. Server response cookies are not saved or adopted. The browser
+version metadata must be readable in the selected profile. Unsupported or
+unavailable sessions fail closed; sign in normally in Firefox if required.
+
+Range validation, strong ETags, full prefix comparison, checkpoint hashes,
+SHA256, ZIP CRC, and no-overwrite publication remain mandatory. Stop the original
+browser download before importing its partial. This option supports Linux
+Firefox authentication, including for a stopped Chrome payload; it does not
+implement Chrome cookie decryption or bypass login or anti-bot challenges.
+
+The optional `--chunk-mib` accepts 8, 16, 32, or 64 MiB; the default remains 8.
+Larger segments reduce request overhead on large exports and need more memory.
+Changing this setting when resuming does not change checkpoint identity or
+integrity checks. A failed current segment is retried without committing it.
 
 ## From any browser
 

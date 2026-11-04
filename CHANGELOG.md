@@ -8,8 +8,15 @@
   random path, strict Host/Origin checks, bounded input, and a short lifetime.
 - Add synthetic tests for privacy, request rejection, lifecycle, and CLI input
   selection. The Range/checkpoint engine and Firefox shell baseline are unchanged.
-- These modes accept direct file links; authenticated Chrome session recovery
-  remains unimplemented. Native full-download acceptance remains pending.
+- Add explicit Linux Firefox session authentication using read-only, first-party
+  cookie access in memory, without cookie snapshots or jar files. Preserve Range,
+  ETag, partial verification, and final integrity checks. Add session isolation,
+  redirect, read-only WAL, privacy, cleanup, and CLI tests.
+- Authenticated Chrome profile recovery remains unimplemented. A stopped Chrome
+  partial can use the selected Firefox session. Full-download acceptance remains
+  pending.
+- Expose a bounded CLI segment size of 8, 16, 32, or 64 MiB without changing the
+  default or the recovery engine's validation.
 
 ## 0.2.0 candidate — 2026-10-19
 

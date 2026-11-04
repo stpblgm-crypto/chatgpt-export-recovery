@@ -1,6 +1,7 @@
 """Launch with python -m chatgpt_export_recovery; no pip packages required."""
 
 import argparse
+from contextlib import ExitStack
 import getpass
 from pathlib import Path
 import sys
@@ -18,6 +19,10 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="New output ZIP path (CLI only)")
     parser.add_argument("--import-partial", type=Path, help="Read and verify a stopped browser partial (CLI only)")
     parser.add_argument("--sha256", default="", help="Optional trusted expected SHA256 (CLI only)")
+    parser.add_argument("--firefox-profile", type=Path,
+                        help="Use an existing local Linux Firefox ChatGPT session in memory (CLI only)")
+    parser.add_argument("--chunk-mib", type=int, choices=(8, 16, 32, 64),
+                        help="Range segment size in MiB (CLI only; default 8)")
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--url-from-clipboard", action="store_true",
                         help="Read a direct HTTPS link once from the local desktop clipboard (CLI only; Tk required)")
@@ -25,7 +30,7 @@ def main(argv=None):
                         help="Accept one direct HTTPS link through a localhost-only browser form (CLI only)")
     args = parser.parse_args(argv)
     if not args.cli:
-        if args.output or args.import_partial or args.sha256 or args.url_from_clipboard or args.url_from_browser:
+        if args.output or args.import_partial or args.sha256 or args.url_from_clipboard or args.url_from_browser or args.firefox_profile or args.chunk_mib:
             parser.error("Use --cli with download options; configure GUI downloads in the window.")
         try:
             from .gui import main as gui_main
@@ -50,8 +55,15 @@ def main(argv=None):
             with warnings.catch_warnings():
                 warnings.simplefilter("error", getpass.GetPassWarning)
                 url = getpass.getpass("Direct HTTPS download link (hidden): ").strip()
-        result = Downloader(Config(url, args.output, args.import_partial, args.sha256), cancel=cancel,
-                            progress=lambda event: print(f"{event.phase}: {event.completed}/{event.total} {event.message}")).run()
+        with ExitStack() as session:
+            options = {}
+            if args.firefox_profile:
+                from .firefox_session import FirefoxSessionTransport
+                options["transport"] = session.enter_context(FirefoxSessionTransport(args.firefox_profile))
+            result = Downloader(Config(url, args.output, args.import_partial, args.sha256,
+                                       chunk_size=(args.chunk_mib or 8) * 1024 * 1024), cancel=cancel,
+                                progress=lambda event: print(f"{event.phase}: {event.completed}/{event.total} {event.message}"),
+                                **options).run()
     except getpass.GetPassWarning:
         print("Hidden terminal input is unavailable. Use the GUI instead.", file=sys.stderr)
         return 2

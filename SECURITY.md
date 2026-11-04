@@ -17,8 +17,8 @@ process listings.
 
 ## Python local link input
 
-The Python app uses standalone HTTPS links without reading browser profiles or
-cookies. Its default terminal prompt is hidden. Explicit clipboard input reads
+The default Python transport uses standalone HTTPS links without reading browser
+profiles or cookies. Its default terminal prompt is hidden. Explicit clipboard input reads
 once without modifying the clipboard; clipboard managers may retain data under
 their own settings.
 
@@ -33,6 +33,15 @@ the same local user. A private destination directory is still required.
 Neither input mode bypasses login, anti-bot challenges, encryption, or server
 Range restrictions. HTTP 401/403 and non-206 responses leave verified bytes
 unchanged. Never commit runtime checkpoints, input links, cookies, or exports.
+
+The separate Linux-only `--firefox-profile` option explicitly reads unexpired
+first-party ChatGPT cookies from one selected Firefox profile into memory. The
+database is opened read-only; no snapshot or cookie file is created. Other
+domains, containers, and partitioned cookies are excluded before values are
+loaded. Credentials are sent only to HTTPS `chatgpt.com` on port 443, respecting
+cookie scope; redirects to storage receive no Firefox cookies. Server cookies
+are not adopted. The in-memory jar is cleared when the transport closes. This
+does not protect against memory inspection by another process running as you.
 
 ## Reporting a vulnerability
 

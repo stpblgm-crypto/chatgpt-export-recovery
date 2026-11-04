@@ -21,16 +21,21 @@ partial import preserves the original. Pause, bounded retries, checkpoint
 hash verification, remote ETag checks, ZIP CRC, SHA256, and no-overwrite
 publication are built in. The UI stays responsive while a worker downloads.
 
-The server must support standalone HTTPS Range requests with a strong ETag.
-The app does not read browser cookies, decrypt profiles, or automate login.
-A session-only export endpoint is not supported by the universal link mode.
+The server must support HTTPS Range requests with a strong ETag. The default
+direct-link mode does not read browser cookies or automate login. For a
+session-only endpoint on Linux, the explicit `--firefox-profile` CLI option
+reads an existing Firefox first-party ChatGPT session into memory without
+copying the database or writing a cookie file. It sends these credentials only
+to `https://chatgpt.com` on port 443. Chrome profile authentication remains
+unimplemented; a stopped Chrome partial can use the selected Firefox session.
 Browser partial import re-fetches the prefix to verify it; normal app resume
 uses its verified checkpoint without re-downloading committed bytes.
 
 The terminal interface also supports explicit `--url-from-clipboard` and
 `--url-from-browser` inputs. The browser option receives one masked link through
 a one-time loopback form on the same computer. These options hand off a direct
-link; they do not import Chrome cookies or add session authentication.
+link; they do not import Chrome cookies. Firefox authentication is a separate,
+explicit option.
 
 [Launch, browser compatibility, privacy, storage, and acceptance guide](docs/DESKTOP_APP.md)
 
